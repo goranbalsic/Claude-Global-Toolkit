@@ -1,0 +1,14 @@
+# OS cruft
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+
+# Install-script backups, if ever run against this repo directly
+*.bak.*
+
+# Local scratch, never committed
+*.tmp

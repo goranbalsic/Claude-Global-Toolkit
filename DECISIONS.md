@@ -4,6 +4,66 @@ Log of significant choices for this repository. Newest first. Each entry:
 context, options considered, decision, rejected alternatives, confidence,
 reversibility.
 
+## D-014 — Add scripts/health-check.ps1/.sh and an explicit versioning policy
+
+- **Date:** 2026-08-07
+- **Context:** UPDATE-02 Phase 4 asks for a small, dependency-free
+  mechanical health-check script (the manual health check in
+  `chapters/05-repository-health-check.md` depends entirely on a session
+  doing it well) and an explicit versioning policy (this toolkit had
+  carried a version number since 2.1.0 without ever stating what triggers
+  a bump).
+- **Decision:** Added `scripts/health-check.ps1` (primary, this
+  environment is Windows/PowerShell) and `scripts/health-check.sh`
+  (POSIX), both read-only, covering the mechanically-checkable subset of
+  `chapters/05`'s criteria: required root files present, `README.md`'s
+  structure table vs. actual tree, frontmatter version/`last_reviewed`
+  consistency across the four version-carrying locations, no empty/
+  near-empty content files, and best-effort internal cross-reference
+  resolution. Cross-referenced from `chapters/05` with explicit scope
+  limits stated (does not replace judgment-level review). Added an
+  explicit patch/minor/major versioning policy to `HOW_TO_BUILD.md`.
+- **Iteration during testing:** the first cross-reference regex flagged
+  31 findings; inspection showed most were false positives — bare
+  filenames used as prose shorthand in comma-separated lists (e.g.
+  `` `templates/project-context.md`, `project-rules.md`, ... ``, relying
+  on the first item's directory) and one legitimate external reference
+  (`salary-currency-pro/CLAUDE.md`, correctly out of this repository's
+  scope). Refined the check: path-style references (containing `/`) are
+  only checked when their first segment matches one of this repository's
+  actual top-level directories (filters out external/out-of-scope paths);
+  bare filenames are checked against a repo-wide basename index rather
+  than requiring an exact directory match (filters out the shorthand
+  pattern). Re-run after refinement: 1 genuine finding remained —
+  `reviews/UPDATE-02-FINAL-AUDIT.md`, referenced in `ROADMAP.md`, does not
+  yet exist because Phase 6 (which creates it) has not run yet. Left
+  as-is rather than suppressed — it is an honest, temporary forward
+  reference that will resolve once Phase 6 completes, not a bug.
+- **Verification:** `health-check.ps1` run directly against this
+  repository: 101 pass, 1 expected fail (the forward reference above), 0
+  skip. `health-check.sh`: syntax-checked (`bash -n`, passed) and run
+  directly: 101 pass, 2 expected fail (the same forward reference, now
+  also picked up from `DECISIONS.md` itself quoting it — both legitimate,
+  not a bug), 0 skip.
+- **Performance fix during testing:** the first `health-check.sh` run
+  took over 5 minutes (moved to background, still running). Traced with
+  `bash -x` under a 30s timeout: `basename_exists()` called the external
+  `basename` command inside a loop over all ~74 tracked files, on *every*
+  invocation, and it was invoked once per bare-filename reference found
+  across the repository — with dozens of such references, that's
+  thousands of subprocess spawns, each carrying Windows Git Bash's real
+  fork/exec overhead. Fixed by precomputing a basename lookup once (a
+  bash associative array via `${f##*/}` parameter expansion, no
+  subprocess) instead of shelling out per lookup. Re-run after the fix:
+  8.7 seconds, identical findings. `health-check.ps1` was never affected
+  (PowerShell's `[regex]` operations don't spawn subprocesses the same
+  way) — its original run was already fast.
+- **Confidence:** High for both scripts — directly observed, correct,
+  and now fast output for each.
+- **Reversibility:** Fully reversible; both scripts are new, additive,
+  read-only files; `chapters/05` and `HOW_TO_BUILD.md` edits are additive
+  sections.
+
 ## D-013 — Load the toolkit automatically everywhere via ~/.claude/CLAUDE.md + native @import
 
 - **Date:** 2026-08-07

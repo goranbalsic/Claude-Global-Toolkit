@@ -82,3 +82,35 @@ Confirmed — quoted from SRC-001 (p.7).
 
 Use `checklists/completion.md` and `checklists/chapter-review.md`, and cross
 -check every criterion above explicitly rather than asserting "looks fine."
+
+## Reproducible mechanical check (net new, UPDATE-02 Phase 4)
+
+`scripts/health-check.ps1` (PowerShell) and `scripts/health-check.sh`
+(POSIX) automate the mechanically-checkable subset of the criteria above:
+required root files present, `README.md`'s structure table matches the
+actual top-level tree, frontmatter `version`/`last_reviewed` consistency
+across `CLAUDE.md`/`GLOBAL_CLAUDE.md`/`PROJECT_CONSTITUTION.md`/
+`README.md`, no empty/near-empty files in content directories, and
+best-effort internal cross-reference resolution. Both are read-only,
+never modify a file, and print a plain pass/fail/skip line per check plus
+a summary; a non-zero exit code means at least one FAIL. Run either from
+the repository root:
+
+```powershell
+.\scripts\health-check.ps1
+```
+
+```bash
+./scripts/health-check.sh
+```
+
+This automates the mechanical portion only — broken links, missing
+targets, empty files, version drift. It does **not** automate: duplicate
+guidance detection, orphaned-document judgment, contradiction detection,
+or unrecorded-decision detection, all of which still need the
+judgment-level review this chapter describes (`reviews/PRINCIPAL_ENGINEER_REVIEW.md`-style). A clean script run is necessary, not sufficient, for
+"health check passed." The cross-reference check in particular is a
+best-effort regex scan with documented limitations (see the script's own
+header comment) — treat a FAIL there as a lead to investigate, and a
+clean run as "no obvious breakage found," not as a full Markdown-link
+audit.

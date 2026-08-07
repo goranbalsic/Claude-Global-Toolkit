@@ -25,14 +25,20 @@ Priorities per UPDATE-02's own phase structure:
   `prompts/README.md` + `PROMPTS.md` cross-reference. Both moved to
   `OPEN_QUESTIONS.md`'s new Resolved section. `IDEAS.md` swept — nothing
   new to add.
-- **P3 — reproducible health tooling, release discipline, exports
-  (Phases 4–5).** Dependency-free health-check script; explicit versioning
-  policy; regenerated Markdown export; PDF/DOCX only if tooling exists or
-  is approved.
+- ~~**P3a — reproducible health tooling, release discipline (Phase 4).**~~
+  Done 2026-08-07 — `scripts/health-check.ps1`/`.sh` (D-014), versioning
+  policy in `HOW_TO_BUILD.md`.
+- **P3b — exports (Phase 5).** Regenerated Markdown export; PDF/DOCX only
+  if tooling exists or is approved (Pandoc confirmed not installed).
+
+~~**SRC-004 — automatic global loading.**~~ Done 2026-08-07 — implemented
+and verified with user approval mid-batch (D-013); see
+`HOW_TO_USE.md` §7. Folded into UPDATE-02's scope per the user's explicit
+instruction to merge SRC-004 into the in-progress UPDATE-02 work.
 
 Phase 6 (final audit, summaries, session log, status rewrite, 2.2.0
-version bump if genuinely earned) closes out the batch once P0–P3 are
-done — see `reviews/UPDATE-02-FINAL-AUDIT.md` when written.
+version bump if genuinely earned) closes out the batch once P0–P3 (and
+SRC-004) are done — see `reviews/UPDATE-02-FINAL-AUDIT.md` when written.
 
 ## Open
 

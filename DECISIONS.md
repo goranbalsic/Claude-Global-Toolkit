@@ -4,6 +4,89 @@ Log of significant choices for this repository. Newest first. Each entry:
 context, options considered, decision, rejected alternatives, confidence,
 reversibility.
 
+## D-009 — Re-verification found salary-currency-pro's CLAUDE.md has diverged from byte-identical; treat as evidence, don't dig further without approval
+
+- **Date:** 2026-08-07
+- **Context:** UPDATE-02 (SRC-003) Phase 0 requires re-verifying its
+  "known repository state" claims rather than assuming them. One claim,
+  carried from D-004, was that `C:\salary-currency-pro\CLAUDE.md` is
+  byte-identical to this repository's `GLOBAL_CLAUDE.md`. Re-running the
+  same `diff` D-004 used found this is **no longer true**: the target file
+  now has an appended "Start or resume (repository-specific addition)"
+  section (the universal ten-rule baseline above it is untouched) that
+  references `PROJECT_CONTEXT.md`, `PROJECT_RULES.md`, `PROMPTS.md`,
+  `session_logs/`, and its own `DECISIONS.md` D-005 — i.e. content
+  consistent with that repository having adopted this toolkit's optional
+  memory-system bundle (`HOW_TO_USE.md` §3) on its own, since D-004 was
+  recorded. This is potentially significant: Phase 1's whole premise is
+  that the toolkit has never been used end-to-end in an adopting
+  repository, and this is the first direct evidence it may have been.
+- **Options considered:**
+  1. Immediately read further into `C:\salary-currency-pro` (its
+     `PROJECT_CONTEXT.md`, `DECISIONS.md`, `session_logs/`) to confirm and
+     characterize this usage.
+  2. Record the discrepancy and the single confirmed fact (the `diff`
+     output itself) here, without reading further into that repository,
+     and raise it as part of Phase 1's required approval question rather
+     than as a unilateral investigation.
+  3. Ignore the discrepancy and proceed as if D-004's byte-identical state
+     still held.
+- **Decision:** Option 2. `PROJECT_CONSTITUTION.md`'s approval matrix and
+  UPDATE-02's own non-negotiables both require fresh explicit approval
+  before touching (which this repository's practice treats as including
+  deliberate multi-file reading of) any repository other than this one.
+  The single `diff` re-run is consistent with D-004's own precedent (a
+  read-only verification check, not an investigation) and is reported
+  honestly; anything further is deferred to Phase 1's approval question.
+- **Rejected alternatives:** Option 1 rejected — would exceed a
+  verification check and become an unapproved investigation of another
+  repository. Option 3 rejected — SRC-002/SRC-003 both forbid proceeding
+  on an unverified assumption once a re-check contradicts it; restating a
+  now-false claim would itself be a fabricated-verification risk this
+  toolkit exists to prevent.
+- **Confidence:** Confirmed for the `diff` output itself (directly
+  observed). Unknown for what produced the change or when — not guessed.
+- **Reversibility:** Fully reversible; read-only, no files changed in
+  either repository by this decision.
+
+## D-008 — Bring this repository under Git version control now, per UPDATE-02 Phase 0
+
+- **Date:** 2026-08-07
+- **Context:** UPDATE-02 (SRC-003) Phase 0 flags that this repository was
+  not under Git version control and frames adopting it as a local,
+  reversible, in-repo action (no approval needed per
+  `PROJECT_CONSTITUTION.md`'s approval matrix) that upgrades
+  "reversible" from file-level backups (`PROJECT_CONTEXT.md`'s prior
+  wording) to commit-level rollback, and makes every subsequent UPDATE-02
+  change auditable.
+- **Options considered (decision-quality table):**
+
+  | Option | Benefits | Costs | Risks | Reversibility | Fit |
+  |---|---|---|---|---|---|
+  | (a) `git init` now, minimal `.gitignore`, one initial commit of current state before further UPDATE-02 edits | Commit-level rollback from this point forward; auditable diff per phase; near-zero cost (no remote, no CI, no packages) | One-time setup; requires a commit author identity | None beyond normal local git use — no remote, nothing pushed | Fully reversible (delete `.git/`) | High — directly matches UPDATE-02's own suggestion and this repo's stated risk ("file-level backups only") |
+  | (b) Defer git adoption, keep file-level backups | Zero setup cost now | Continues the exact risk UPDATE-02 flags; no rollback finer than manual backups | Larger, harder-to-audit diffs across UPDATE-02's many phases | N/A | Low — UPDATE-02 explicitly asks this be weighed now |
+  | (c) `git init` plus immediately configure a remote/push | Same as (a) plus off-machine backup | Publishing/pushing requires explicit approval per the approval matrix; not asked for | Could expose repository content externally without authorization | Harder to reverse (shared state) | Rejected — exceeds what was authorized |
+
+- **Decision:** (a). Ran `git init`, added a minimal `.gitignore` (OS
+  cruft, editor dirs, `*.bak.*`, `*.tmp`), and committed the current
+  state — which by this point already included the SRC-003/PROMPT-003
+  registration edits, since UPDATE-02's own step 2 required those before
+  Phase 0's git decision runs; the commit message says so explicitly
+  rather than presenting an artificially clean split. No remote was
+  configured; nothing was pushed or published, per the approval matrix.
+  Git author identity: the user was asked (blocked without it — Git
+  Safety Protocol forbids configuring git config unprompted) and chose a
+  **local, repo-scoped** `user.name`/`user.email` (not `--global`), using
+  their known email.
+- **Rejected alternatives:** (b) rejected — directly contradicts the
+  premise UPDATE-02 itself states for raising this decision. (c) rejected
+  — publishing/pushing is a separate approval-matrix action not requested
+  here; scope stays local-only until asked.
+- **Confidence:** High — mechanical, low-risk, directly requested by the
+  governing prompt, reversible by deleting `.git/`.
+- **Reversibility:** Fully reversible; `.git/` can be deleted with no
+  effect on working-tree file contents.
+
 ## D-007 — Implement IDEA-001 via templates/ + HOW_TO_USE.md, not via GLOBAL_CLAUDE.md
 
 - **Date:** 2026-08-07

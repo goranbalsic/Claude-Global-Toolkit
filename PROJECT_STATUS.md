@@ -36,10 +36,17 @@ deliberately not duplicates of each other; see `DECISIONS.md` D-005.
   safe-abort-when-unconfirmed, backup-then-overwrite) passed for both
   PowerShell and POSIX shell versions (`DECISIONS.md` D-003).
 - **A real (non-disposable) target repository is confirmed carrying the
-  installed baseline.** `C:\salary-currency-pro\CLAUDE.md` is byte-identical
-  to this repository's `GLOBAL_CLAUDE.md` (verified via `diff`). The exact
-  install mechanism is Unknown confidence; the resulting state is Confirmed.
-  See `DECISIONS.md` D-004. This closes the previous open risk below.
+  installed baseline — and has since diverged from it.** As of D-004
+  (2026-08-07, earlier same day), `C:\salary-currency-pro\CLAUDE.md` was
+  byte-identical to this repository's `GLOBAL_CLAUDE.md`. Re-verified
+  during UPDATE-02 Phase 0 (2026-08-07, later same day): it is **no
+  longer** byte-identical — the universal ten-rule baseline is still
+  intact, but a repository-specific section has been appended referencing
+  that project's own `PROJECT_CONTEXT.md`/`PROJECT_RULES.md`/`PROMPTS.md`/
+  `session_logs/`/`DECISIONS.md` D-005, consistent with that repository
+  having adopted this toolkit's optional memory-system bundle on its own.
+  See `DECISIONS.md` D-009 — this is the first direct evidence of possible
+  real-world use and feeds directly into UPDATE-02 Phase 1.
 - **Claude Code version compatibility verified.** Installed CLI confirmed as
   `2.1.224` on Windows 11, no breaking changes found against this toolkit's
   assumptions. Scoped to this version/date/OS — see

@@ -3,10 +3,34 @@
 Planned work, not yet done. Move items to `CHANGELOG.md` once actually
 completed and verified.
 
-## Open
+## Open — UPDATE-02 (SRC-003) plan
 
-- **PDF/DOCX export.** Only after Markdown export exists and export tooling
-  is confirmed available or its installation is explicitly approved.
+Bounded plan for `sources/UPDATE-02-claude-global-toolkit-prompt.md`
+(`PROMPTS.md` PROMPT-003), written 2026-08-07 at the start of Phase 0.
+Priorities per UPDATE-02's own phase structure:
+
+- **P0 — false claims, broken references, safety issues found in
+  re-verification.** One found already: `salary-currency-pro/CLAUDE.md` is
+  no longer byte-identical to `GLOBAL_CLAUDE.md` (`DECISIONS.md` D-009) —
+  D-004's "Confirmed byte-identical" claim is now stale and needs
+  correcting wherever it's restated as current fact.
+- **P1 — the real-world validation gap (Phase 1).** Create the
+  adoption-validation checklist; ask the required single approval question
+  before touching `salary-currency-pro` further, now informed by the D-009
+  finding.
+- **P2 — adoption lifecycle completeness (Phase 2) and open-question
+  closure (Phase 3).** Drift/update/recovery/removal docs in
+  `HOW_TO_USE.md`; close `OPEN_QUESTIONS.md` QUESTION-001 and QUESTION-002.
+- **P3 — reproducible health tooling, release discipline, exports
+  (Phases 4–5).** Dependency-free health-check script; explicit versioning
+  policy; regenerated Markdown export; PDF/DOCX only if tooling exists or
+  is approved.
+
+Phase 6 (final audit, summaries, session log, status rewrite, 2.2.0
+version bump if genuinely earned) closes out the batch once P0–P3 are
+done — see `reviews/UPDATE-02-FINAL-AUDIT.md` when written.
+
+## Open
 
 ## Done
 
@@ -31,7 +55,10 @@ completed and verified.
   fresh `install.ps1`/`install.sh` create-when-absent run or an equivalent
   manual copy — the exact mechanism is Unknown confidence, but the resulting
   state (a real, non-disposable target repository carrying this toolkit's
-  baseline) is Confirmed. See `DECISIONS.md` D-004.
+  baseline) is Confirmed. See `DECISIONS.md` D-004. **Superseded same day:**
+  a later re-verification (UPDATE-02 Phase 0) found the file has since
+  diverged from byte-identical — see `DECISIONS.md` D-009 and
+  `PROJECT_STATUS.md`.
 - ~~**Full final audit.**~~ Done 2026-08-07 — see `reviews/FINAL_AUDIT.md`
   and `reviews/PRINCIPAL_ENGINEER_REVIEW.md`.
 - ~~**Markdown export bundle.**~~ Done 2026-08-07 — see

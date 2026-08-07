@@ -1,5 +1,10 @@
 # Prompt Library
 
+Not to be confused with `prompts/` (generic, reusable task-execution
+prompts for any project) — see `prompts/README.md` and this file's "How to
+Use This File" section immediately below for the distinction.
+`OPEN_QUESTIONS.md` QUESTION-002.
+
 ## How to Use This File
 
 This file tracks the actual large prompts/instruction sets this project's

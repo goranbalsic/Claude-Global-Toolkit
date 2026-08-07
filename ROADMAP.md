@@ -20,8 +20,11 @@ Priorities per UPDATE-02's own phase structure:
 - ~~**P2a — adoption lifecycle completeness (Phase 2).**~~ Done 2026-08-07
   — `HOW_TO_USE.md` §6 (drift/update/recovery/removal); D-012 (version
   anchor, install scripts re-verified against D-003's four scenarios).
-- **P2b — open-question closure (Phase 3).** Close `OPEN_QUESTIONS.md`
-  QUESTION-001 and QUESTION-002.
+- ~~**P2b — open-question closure (Phase 3).**~~ Done 2026-08-07 —
+  QUESTION-001 resolved with default (c); QUESTION-002 resolved via
+  `prompts/README.md` + `PROMPTS.md` cross-reference. Both moved to
+  `OPEN_QUESTIONS.md`'s new Resolved section. `IDEAS.md` swept — nothing
+  new to add.
 - **P3 — reproducible health tooling, release discipline, exports
   (Phases 4–5).** Dependency-free health-check script; explicit versioning
   policy; regenerated Markdown export; PDF/DOCX only if tooling exists or

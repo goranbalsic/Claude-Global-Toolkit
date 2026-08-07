@@ -6,60 +6,51 @@ None currently — nothing here blocks current work.
 
 ## Medium Importance
 
+None currently — see Resolved below for QUESTION-001.
+
+## Low Importance
+
+None currently — see Resolved below for QUESTION-002.
+
+## Resolved
+
 ### QUESTION-001: What should `memory/` actually contain?
 
-Date added: 2026-08-07
+Date added: 2026-08-07 · Date resolved: 2026-08-07
 
-Why it matters: SRC-002 (`sources/update.txt`) lists `memory/` in its
+Why it mattered: SRC-002 (`sources/update.txt`) lists `memory/` in its
 required directory structure but never describes its contents anywhere in
 the prompt body, unlike `summaries/` and `session_logs/`, which both get
 explicit instructions. Creating the directory without a clear purpose risks
 it becoming an unused or inconsistently-used dumping ground.
 
-Current assumptions: `memory/README.md` proposes a narrow, stated-as-inferred
-interpretation: a place for structured extracts from large prompts that are
-too detailed to inline in `PROJECT_CONTEXT.md` or `PROJECT_RULES.md` (e.g. a
-longer prompt-summary write-up than `PROMPTS.md`'s "Prompt Summaries"
-section comfortably holds).
+Possible answers considered: (a) a narrow interpretation — structured
+extracts from large prompts too detailed for `PROJECT_CONTEXT.md`/
+`PROJECT_RULES.md`; (b) a general scratch space for any structured memory
+artifact; (c) leave it present but empty until a concrete need arises.
 
-Possible answers: (a) the narrow interpretation above; (b) a general
-scratch space for any structured memory artifact not covered by the other
-named files; (c) the directory was listed but not meant to be used unless a
-concrete need arises — leave it present but empty until then.
-
-Does it block current work? No — the directory and README exist either way;
-this only affects what gets put in it later.
-
-Recommended default if no answer is received: (c) — leave it present with
-its README's stated purpose, add content only when a concrete case arises
-that doesn't fit `PROJECT_CONTEXT.md`, `PROJECT_RULES.md`, or `PROMPTS.md`.
-
-Status: Open
-
-## Low Importance
+**Resolution: (c), per UPDATE-02 Phase 3** (`PROMPTS.md` PROMPT-003). No
+user answer was received, and UPDATE-02 directed adopting the recommended
+default unless Phase 1's real-world validation run (`DECISIONS.md` D-011)
+suggested otherwise — it didn't touch `memory/` or surface any need for
+it, so the default stands. `memory/README.md` reflects this as a settled
+interpretation. Reopen only if a concrete case genuinely doesn't fit any
+named root file.
 
 ### QUESTION-002: Should `PROMPTS.md` (project-level) and `prompts/` (generic library) have clearer cross-linking to avoid confusion?
 
-Date added: 2026-08-07
+Date added: 2026-08-07 · Date resolved: 2026-08-07
 
-Why it matters: The two serve different purposes (see `DECISIONS.md` D-005)
-but the name similarity could confuse a future session skimming the
+Why it mattered: The two serve different purposes (see `DECISIONS.md`
+D-005) but the name similarity could confuse a future session skimming the
 directory listing.
 
-Current assumptions: The distinction is explained in both `PROMPTS.md`'s
-"How to Use This File" section and `DECISIONS.md` D-005; assumed sufficient
-for now.
-
-Possible answers: Leave as-is; or add a one-line cross-reference at the top
-of `prompts/`'s own listing (there's no `prompts/README.md` currently) and
-in `PROMPTS.md` pointing at each other explicitly.
-
-Does it block current work? No.
-
-Recommended default if no answer is received: Leave as-is; revisit only if
-a future session actually gets confused by it in practice.
-
-Status: Open
+**Resolution: implemented the cheap fix, per UPDATE-02 Phase 3.** Added
+`prompts/README.md` (didn't exist before) explaining `prompts/`'s purpose
+and pointing at `PROMPTS.md`/`DECISIONS.md` D-005 for the distinction, and
+added a matching one-line pointer atop `PROMPTS.md` pointing back. Both
+files now cross-reference each other directly, not just describe
+themselves in isolation.
 
 ## Question Template
 

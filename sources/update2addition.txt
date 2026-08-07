@@ -1,0 +1,34 @@
+# UPDATE-02 ADDITION - Make the toolkit Claude Code's automatic global brain
+
+The core product requirement is:
+
+C:\Claude-Global-Toolkit must operate as a project-independent extension and persistent operating system for Claude Code. It must load automatically whenever Claude Code starts work in ANY new or existing project. The user must not need to install it separately, copy files, request an update, mention the toolkit, or tell Claude to check it.
+
+Implement the safest officially supported architecture for this using Claude Code's user-level configuration at:
+
+%USERPROFILE%\.claude\CLAUDE.md
+
+The global file should stay concise and automatically reference or load the canonical instructions from C:\Claude-Global-Toolkit rather than duplicating stale copies wherever Claude Code supports this reliably.
+
+Requirements:
+
+- Automatically apply the toolkit at every Claude Code session.
+- Work for new and existing projects.
+- Keep C:\Claude-Global-Toolkit as the canonical source of truth.
+- Toolkit updates must become active globally without updating every project.
+- Preserve each project's own CLAUDE.md and project-specific instructions.
+- Project-specific rules take priority where appropriate.
+- Never copy toolkit-specific project history, private context, or irrelevant files into application context.
+- Load only the universal operating rules by default; retrieve deeper prompts, checklists, templates, and governance files when relevant.
+- Avoid excessive context usage and repeated reading.
+- Do not create a fragile background service if Claude Code's native global instructions/imports can provide this behavior.
+- Back up any existing %USERPROFILE%\.claude\CLAUDE.md before changing it.
+- Merge safely with existing global user instructions instead of overwriting them.
+- Show the proposed change and obtain approval before modifying user-level configuration.
+- Add installation, verification, update, recovery, and removal instructions.
+- Verify the result by launching Claude Code from a disposable new project and an existing project, confirming that the global toolkit loads without being mentioned.
+- Record the architecture and verification evidence in DECISIONS.md, HOW_TO_USE.md, PROJECT_STATUS.md, CHANGELOG.md, and the UPDATE-02 final audit.
+
+Treat this as a defining product requirement, not an optional adoption mode. The toolkit's purpose is to make Claude Code a consistent, efficient, context-aware coding partner across every project while preserving each repository's local authority and context.
+
+Implement this before declaring UPDATE-02 complete.

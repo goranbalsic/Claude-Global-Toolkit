@@ -2,11 +2,12 @@
 
 Required by SRC-002 (`sources/update.txt`), but SRC-002 never defines what
 this directory should actually contain — unlike `summaries/` and
-`session_logs/`, which both get explicit instructions in that source. See
-`OPEN_QUESTIONS.md` QUESTION-001; this is a stated inference, not a
-confirmed requirement.
+`session_logs/`, which both get explicit instructions in that source.
+`OPEN_QUESTIONS.md` QUESTION-001 tracked this as open; resolved 2026-08-07
+(UPDATE-02 Phase 3) with the working interpretation below as the settled
+answer, not just a stated inference.
 
-## Working interpretation (until QUESTION-001 is resolved)
+## Working interpretation (settled, per QUESTION-001's resolution)
 
 A place for structured memory extracts too detailed to inline elsewhere:
 long prompt-summary write-ups that don't fit `PROMPTS.md`'s "Prompt
@@ -16,7 +17,6 @@ don't match `PROJECT_CONTEXT.md`, `PROJECT_RULES.md`, `DECISIONS.md`,
 
 ## Current status
 
-Empty as of 2026-08-07. Per the recommended default in `OPEN_QUESTIONS.md`
-QUESTION-001, nothing is being added here speculatively — a file goes here
-only when a concrete case arises that genuinely doesn't fit any of the
-named root files.
+Empty as of 2026-08-07. Nothing is added here speculatively — a file goes
+here only when a concrete case arises that genuinely doesn't fit any of
+the named root files.

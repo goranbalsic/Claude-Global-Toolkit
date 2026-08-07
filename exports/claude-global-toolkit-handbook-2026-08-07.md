@@ -1,12 +1,3 @@
-# Claude Global Toolkit — Merged Handbook Export
-
-Generated 2026-08-07 from toolkit version 2.1.0. Concatenation order:
-README.md, PROJECT_CONSTITUTION.md, chapters/ (filename order),
-prompts/ (filename order), templates/ (filename order), checklists/
-(filename order), per chapters/06-handbook-templates-and-exports.md.
-
----
-
 # Claude Global Toolkit
 
 All-in-one baseline for AI-assisted engineering with Claude Code: a universal
@@ -16,31 +7,40 @@ adopting the baseline in any repository.
 
 Toolkit version: 2.1.0 · Last reviewed: 2026-08-07
 
-This repository is generated from `sources/Claude_Global_Toolkit_AIO_Master_Prompt_v2.1.pdf`.
-The PDF is a reference export; the Markdown and scripts in this repository are
-authoritative (see `sources/README.md`).
+This repository is generated from two sources in `sources/` (see
+`SOURCE_REGISTER.md`): the original master-prompt PDF (SRC-001) and a
+memory/decision-system prompt (SRC-002, `update.txt`). Both are reference
+exports; the Markdown and scripts in this repository are authoritative (see
+`sources/README.md`).
 
 ## What's in here
 
 | Path | Purpose |
 |---|---|
 | `GLOBAL_CLAUDE.md` | The universal baseline. Copy into another repo as `CLAUDE.md`. |
-| `CLAUDE.md` | Operating instructions for *this* repository specifically. |
+| `CLAUDE.md` | Operating instructions for *this* repository specifically, including the canonical session-start order. |
+| `PROJECT_CONTEXT.md` | Living overview: what this project is, why, user goals/preferences, current focus, risks, next action. |
+| `PROJECT_RULES.md` | Behavior rules for future sessions not already covered by `GLOBAL_CLAUDE.md`/`PROJECT_CONSTITUTION.md` (contradiction handling, prompt classification, decision-quality comparison). |
 | `PROJECT_CONSTITUTION.md` | Durable purpose, authority hierarchy, approval matrix, definition of done. |
 | `DECISIONS.md` | Log of significant choices made while building/maintaining this toolkit. |
+| `PROMPTS.md` | Log of the actual large prompts (SRC-001, SRC-002) that shaped this repository, with status. |
+| `IDEAS.md` | Backlog of not-yet-committed ideas, including rejected/deferred ones with reasons. |
+| `OPEN_QUESTIONS.md` | Unresolved questions with a safe default, so they don't block progress or get re-asked. |
 | `SOURCE_REGISTER.md` | Register of source material this toolkit is derived from. |
-| `PROJECT_STATUS.md` | Current state, risks, and exact resume point. |
+| `PROJECT_STATUS.md` | Build-progress ledger: current state, risks, and exact resume point. |
 | `ROADMAP.md` | Planned work, not yet done. |
 | `CHANGELOG.md` | Version history of this toolkit. |
 | `HOW_TO_USE.md` | How to adopt this toolkit in another repository. |
 | `HOW_TO_BUILD.md` | How this toolkit itself is built/maintained. |
 | `chapters/` | Handbook — one chapter per major topic, with rationale. |
-| `prompts/` | Reusable task prompts (resume, investigate, plan, implement, review, ...). |
-| `templates/` | Fill-in templates (spec, plan, decision, verification, handoff, ...). |
-| `checklists/` | Checklists (startup, security, release, ...). |
+| `prompts/` | Reusable task prompts for *any* project (resume, investigate, plan, implement, review, ...) — not to be confused with `PROMPTS.md` above. |
+| `templates/` | Fill-in templates (spec, plan, decision, verification, handoff, ...), including an optional memory-system bundle — see `HOW_TO_USE.md` §3. |
+| `checklists/` | Checklists (startup, security, release, adoption validation, ...). |
 | `scripts/` | Install scripts (`install.ps1`, `install.sh`). |
 | `reviews/` | Final audits, produced when a review is actually run. |
 | `summaries/` | Batch summaries written after each unit of work. |
+| `session_logs/` | Dated, per-session logs — finer-grained than `summaries/`. |
+| `memory/` | Structured memory extracts too detailed for the files above (see its README — purpose is intentionally narrow/inferred, not fully specified by source). |
 | `exports/` | Generated exports (Markdown-merged, and PDF/DOCX when tooling exists). |
 | `sources/` | Original reference material, kept verbatim. |
 
@@ -57,6 +57,7 @@ where to resume.
 
 
 ---
+
 
 ---
 title: Project Constitution — Claude Global Toolkit
@@ -148,6 +149,7 @@ A deliverable in this repository is done only when:
 
 
 ---
+
 
 ---
 chapter: 00
@@ -242,6 +244,7 @@ command in the session transcript.
 
 ---
 
+
 ---
 chapter: 01
 title: Daily operating loop and no silent scope expansion
@@ -332,6 +335,7 @@ Use `prompts/resume.md` for step 1, `prompts/investigation.md` for step 2,
 
 
 ---
+
 
 ---
 chapter: 02
@@ -428,6 +432,7 @@ recording a decision.
 
 ---
 
+
 ---
 chapter: 03
 title: "Phase 0: investigation, decision register, source register, batching"
@@ -522,6 +527,7 @@ implementation.
 
 
 ---
+
 
 ---
 chapter: 04
@@ -629,6 +635,7 @@ carrying the installed baseline — see `DECISIONS.md` D-004 and
 
 ---
 
+
 ---
 chapter: 05
 title: Repository health check and measurable success criteria
@@ -714,8 +721,41 @@ Confirmed — quoted from SRC-001 (p.7).
 Use `checklists/completion.md` and `checklists/chapter-review.md`, and cross
 -check every criterion above explicitly rather than asserting "looks fine."
 
+## Reproducible mechanical check (net new, UPDATE-02 Phase 4)
+
+`scripts/health-check.ps1` (PowerShell) and `scripts/health-check.sh`
+(POSIX) automate the mechanically-checkable subset of the criteria above:
+required root files present, `README.md`'s structure table matches the
+actual top-level tree, frontmatter `version`/`last_reviewed` consistency
+across `CLAUDE.md`/`GLOBAL_CLAUDE.md`/`PROJECT_CONSTITUTION.md`/
+`README.md`, no empty/near-empty files in content directories, and
+best-effort internal cross-reference resolution. Both are read-only,
+never modify a file, and print a plain pass/fail/skip line per check plus
+a summary; a non-zero exit code means at least one FAIL. Run either from
+the repository root:
+
+```powershell
+.\scripts\health-check.ps1
+```
+
+```bash
+./scripts/health-check.sh
+```
+
+This automates the mechanical portion only — broken links, missing
+targets, empty files, version drift. It does **not** automate: duplicate
+guidance detection, orphaned-document judgment, contradiction detection,
+or unrecorded-decision detection, all of which still need the
+judgment-level review this chapter describes (`reviews/PRINCIPAL_ENGINEER_REVIEW.md`-style). A clean script run is necessary, not sufficient, for
+"health check passed." The cross-reference check in particular is a
+best-effort regex scan with documented limitations (see the script's own
+header comment) — treat a FAIL there as a lead to investigate, and a
+clean run as "no obvious breakage found," not as a full Markdown-link
+audit.
+
 
 ---
+
 
 ---
 chapter: 06
@@ -747,6 +787,11 @@ verification, failures, and handoffs.
 
 Create checklists for: startup, investigation, editing, completion, security,
 performance, release, source evaluation, and chapter review.
+
+*(Net new, not in SRC-001: `checklists/adoption-validation.md`, added by
+UPDATE-02/SRC-003 — see `PROMPTS.md` PROMPT-003 — to close the real-world
+validation gap this chapter's own "Risks if ignored" section didn't yet
+have tooling for.)*
 
 *(This chapter follows that structure — see the "problem / rationale / use
 and non-use / risks / evidence / confidence / verification" headings used
@@ -805,12 +850,16 @@ Confirmed — quoted from SRC-001 (p.8).
 
 ## Verification
 
-`reviews/` holds `FINAL_AUDIT.md` and `PRINCIPAL_ENGINEER_REVIEW.md` once an
-actual audit has been run — see `reviews/README.md` for current status (none
-run yet in this repository as of the initial build).
+`reviews/` holds `reviews/FINAL_AUDIT.md` and
+`reviews/PRINCIPAL_ENGINEER_REVIEW.md` once an actual audit has been run —
+see `reviews/README.md` for current status. (As of this repository's
+initial build, neither existed yet; a full audit was subsequently run
+2026-08-07 and both now exist — see `reviews/README.md` for the current
+state rather than relying on this chapter's own point-in-time wording.)
 
 
 ---
+
 
 ---
 chapter: 07
@@ -918,6 +967,24 @@ session end to structure the completion report.
 
 ---
 
+
+# prompts/
+
+Reusable, generic task-execution prompts for *any* project (new session,
+resume, investigation, requirements, planning, implementation, bug fixing,
+refactoring, security review, verification, adversarial review, feature
+research) — invoke the one that fits the task at hand.
+
+Not to be confused with `PROMPTS.md` in this repository's root, which is a
+project-specific log of the actual large prompts (SRC-001, SRC-002, SRC-003)
+that shaped *this* repository — a different axis, not a duplicate. See
+`DECISIONS.md` D-005 for the distinction, and `OPEN_QUESTIONS.md`
+QUESTION-002 for why this pointer exists.
+
+
+---
+
+
 ---
 title: Adversarial review
 use_when: Independently stress-testing a change or decision before it ships
@@ -948,6 +1015,7 @@ confirm that it works:
 
 
 ---
+
 
 ---
 title: Bug fixing
@@ -981,6 +1049,7 @@ Fix <bug>:
 
 ---
 
+
 ---
 title: Feature research
 use_when: Exploring how to build a new capability before committing to an approach
@@ -1010,6 +1079,7 @@ Research options for <feature> before recommending an approach:
 
 ---
 
+
 ---
 title: Implementation
 use_when: Executing an already-agreed plan
@@ -1038,6 +1108,7 @@ Implement the agreed plan for <task>:
 
 ---
 
+
 ---
 title: Investigation
 use_when: Before making non-trivial changes, to establish ground truth about current behavior
@@ -1063,6 +1134,7 @@ Investigate <area/feature/bug> before proposing any change:
 
 
 ---
+
 
 ---
 title: New session
@@ -1098,6 +1170,7 @@ criteria, and any blocking questions before proceeding.
 
 ---
 
+
 ---
 title: Planning
 use_when: After requirements are clear, before touching any files
@@ -1128,6 +1201,7 @@ higher-risk work, confirmed).
 
 ---
 
+
 ---
 title: Refactoring
 use_when: Improving code structure without changing external behavior
@@ -1155,6 +1229,7 @@ Refactor <area> without changing external behavior:
 
 
 ---
+
 
 ---
 title: Requirements clarification
@@ -1186,6 +1261,7 @@ repository.
 
 ---
 
+
 ---
 title: Resume
 use_when: Continuing work in a repository that already has this toolkit's governance files
@@ -1214,6 +1290,7 @@ Do not begin implementation until steps 1-5 are done and reported.
 
 
 ---
+
 
 ---
 title: Security review
@@ -1245,6 +1322,7 @@ Review <change/area> for security issues:
 
 ---
 
+
 ---
 title: Verification
 use_when: After implementation, before reporting a change as done
@@ -1272,6 +1350,7 @@ Verify the change to <task> before reporting completion:
 
 ---
 
+
 # Decision template
 
 Use for each new entry in a repository's `DECISIONS.md`.
@@ -1293,6 +1372,7 @@ Use for each new entry in a repository's `DECISIONS.md`.
 
 
 ---
+
 
 # Failure template
 
@@ -1324,6 +1404,7 @@ commit if resolved.>
 
 
 ---
+
 
 # Handoff template
 
@@ -1362,6 +1443,78 @@ chapters/07-compatibility-and-persistence.md's safe resume instruction.>
 
 ---
 
+
+# IDEAS.md template
+
+Part of the optional memory-system bundle (see `HOW_TO_USE.md` → "Optional:
+memory and decision continuity"). Copy into a target repository's root as
+`IDEAS.md` and fill in. Distinct from a `ROADMAP.md`-style list of
+committed work: this is a backlog of ideas that have *not* been committed
+to, including ones explicitly rejected or deferred, with reasons preserved.
+
+```markdown
+# Ideas Backlog
+
+## How Ideas Are Managed
+
+Ideas are not automatically approved work. Each idea must be evaluated
+against the current project goal before implementation.
+
+## High-Potential Ideas
+
+Ideas that may provide substantial value but are not currently being
+implemented.
+
+## Possible Ideas
+
+Interesting ideas that require more evidence or prioritization.
+
+## Rejected Ideas
+
+Ideas that were considered and rejected. Include the reason.
+
+## Deferred Ideas
+
+Ideas intentionally postponed because of timing, scope, risk,
+dependencies, or lower priority.
+
+## Idea Template
+
+### IDEA-001: Title
+
+Date added:
+
+Source:
+
+Problem it may solve:
+
+Proposed solution:
+
+Expected benefit:
+
+Potential risks:
+
+Dependencies:
+
+Alternatives:
+
+Priority:
+
+Status:
+
+Reason for current status:
+```
+
+When a new idea appears during a session, record it here instead of
+immediately implementing it if it's outside the current objective. When an
+idea is later implemented, don't delete its entry — move it to an
+"Implemented Ideas" section (add one if this file doesn't have it yet) with
+a pointer to what changed, so the backlog stays an honest history.
+
+
+---
+
+
 # Investigation template
 
 Use with `prompts/investigation.md`.
@@ -1393,6 +1546,59 @@ file:line references, exact commands.>
 
 
 ---
+
+
+# OPEN_QUESTIONS.md template
+
+Part of the optional memory-system bundle (see `HOW_TO_USE.md` → "Optional:
+memory and decision continuity"). Copy into a target repository's root as
+`OPEN_QUESTIONS.md` and fill in. Purpose: track unresolved questions with a
+safe default, so they don't block progress and don't get re-asked to the
+user every session.
+
+```markdown
+# Open Questions
+
+## High Importance
+
+Questions that block important work or could significantly change the
+project.
+
+## Medium Importance
+
+Questions that affect quality or future planning but do not currently
+block progress.
+
+## Low Importance
+
+Questions that can be decided later.
+
+## Question Template
+
+### QUESTION-001: Title
+
+Date added:
+
+Why it matters:
+
+Current assumptions:
+
+Possible answers:
+
+Does it block current work?
+
+Recommended default if no answer is received:
+
+Status:
+```
+
+Whenever possible, choose a safe, reversible default instead of blocking
+progress — record the default taken so a future session (or the user) can
+revisit it deliberately rather than it being silently assumed.
+
+
+---
+
 
 # Plan template
 
@@ -1427,6 +1633,321 @@ expansion — see chapters/01-daily-operating-loop.md.>
 
 
 ---
+
+
+# PROJECT_CONTEXT.md template
+
+Part of the optional memory-system bundle (see `HOW_TO_USE.md` → "Optional:
+memory and decision continuity"). Copy into a target repository's root as
+`PROJECT_CONTEXT.md` and fill in. Distinct from `PROJECT_STATUS.md`-style
+build-progress ledgers: this file answers *why* the project exists and
+*what the user wants*, not just what's currently built.
+
+```markdown
+# Project Context
+
+## Last Updated
+
+- Date:
+- Updated by:
+- Current status:
+
+## Project Identity
+
+What this project is and what it is intended to become.
+
+## Purpose
+
+Why this project exists.
+
+## User Goals
+
+What the user is trying to accomplish.
+
+## Desired Outcome
+
+What a successful final result looks like.
+
+## Current State
+
+What currently exists and what is working.
+
+## Current Focus
+
+The single most important thing being worked on now.
+
+## Important Constraints
+
+Technical, business, creative, legal, time, budget, compatibility, or
+quality constraints.
+
+## User Preferences
+
+Important preferences the AI should remember. Only include preferences that
+are actually known or explicitly provided by the user — do not guess.
+
+Examples of the kind of thing that belongs here:
+
+- Prefer practical execution over endless explanation.
+- Prefer the strongest solution instead of asking about every minor choice.
+- Avoid unnecessary rewrites.
+- Preserve working functionality.
+- Keep decisions documented.
+- Do not repeatedly ask what to do next.
+
+## Known Risks
+
+Current technical, product, process, or information risks.
+
+## Known Uncertainties
+
+Information that is incomplete, unverified, ambiguous, or likely to change.
+
+## Current Priorities
+
+Ranked priorities, with one clearly identified as the next priority.
+
+## Completed Milestones
+
+Brief list of meaningful completed work.
+
+## Next Recommended Action
+
+One specific next action selected using current goals, constraints, risks,
+and expected value.
+```
+
+Update this file whenever the project's direction, priorities, constraints,
+or important context changes. Do not fill it with implementation detail
+that belongs in code, a build-progress file, or `DECISIONS.md` instead.
+
+
+---
+
+
+# PROJECT_RULES.md template
+
+Part of the optional memory-system bundle (see `HOW_TO_USE.md` → "Optional:
+memory and decision continuity"). Copy into a target repository's root as
+`PROJECT_RULES.md` and fill in. If that repository has already installed
+`GLOBAL_CLAUDE.md` as its `CLAUDE.md`, trim sections below that only repeat
+what's already covered there (autonomous decision-making, scope control,
+evidence/verification) and keep the parts that aren't (contradiction
+handling, prompt classification, decision-quality comparison) — see this
+toolkit's own `PROJECT_RULES.md` for a worked example of that trimming.
+
+```markdown
+# Project Rules
+
+## Source of Truth
+
+The repository is the source of truth for persistent project context. Do
+not rely on previous chat history being available. At the start of every
+session: read PROJECT_CONTEXT.md, PROJECT_RULES.md, DECISIONS.md, the
+latest relevant prompt or prompt summary, and the latest session log —
+then inspect the current project state before making assumptions. (If this
+repository also has a CLAUDE.md with its own start/resume order, merge the
+two into one canonical list there rather than keeping both — see
+"Contradiction Handling" below.)
+
+## Autonomous Decision-Making
+
+Make normal decisions independently. Do not repeatedly ask the user what
+should happen next, which minor option they prefer, or which small
+implementation detail to choose. Choose the best solution based on the
+user's stated goals, current project context, existing constraints,
+evidence, quality, simplicity, reliability, long-term maintainability, and
+expected user value. Ask only when the decision requires information the
+AI cannot reasonably know, or when the consequences are serious and
+irreversible.
+
+## Context Preservation
+
+Important information from conversations must be transferred into
+repository files — do not assume a long conversation will remain available
+after restart. When the user provides an important prompt, requirement,
+preference, idea, correction, or decision, determine whether it belongs in
+PROJECT_CONTEXT.md, PROJECT_RULES.md, PROMPTS.md, DECISIONS.md, IDEAS.md,
+OPEN_QUESTIONS.md, a summary, or a session log.
+
+## Prompt Management
+
+Do not blindly treat every prompt as permanent. Classify prompts as:
+Permanent instructions, Project-level instructions, Task-specific
+instructions, Temporary experiments, Ideas under consideration, or
+Superseded instructions. Preserve original prompts when useful, but also
+write concise summaries so future sessions don't need to reread everything.
+
+## Contradiction Handling
+
+When instructions conflict:
+
+1. Identify the conflict.
+2. Determine which instruction is newer.
+3. Determine which is more specific.
+4. Check whether the newer instruction intentionally changes the previous
+   direction.
+5. Check the project's goals and constraints.
+6. Prefer the option that best serves the user's current objective.
+7. Record the resolution in DECISIONS.md.
+8. Ask the user only if the conflict cannot be resolved safely.
+
+Do not silently combine contradictory requirements.
+
+## Decision Quality
+
+Do not treat all ideas as equally valuable. Compare alternatives using:
+alignment with the user's goal, expected value, user benefit, simplicity,
+reliability, cost, time, risk, maintainability, scalability, reversibility,
+evidence, and compatibility with existing work. Select the strongest
+practical option. If there's no clear winner, explain the trade-offs
+briefly and choose the safest reversible option.
+
+## Scope Control
+
+Focus on the current highest-value objective. Do not implement every
+interesting idea immediately — keep future ideas in IDEAS.md. Prefer
+completing one meaningful end-to-end result over starting many unfinished
+tasks. Avoid unnecessary rewrites, dependencies, and uncontrolled scope
+expansion.
+
+## Evidence and Verification
+
+Do not claim success without verification. Clearly distinguish between:
+Proposed, Planned, In progress, Implemented, Tested, Verified, Partially
+verified, Blocked, Rejected, Superseded.
+
+## Memory Maintenance
+
+At the end of every meaningful session: update PROJECT_CONTEXT.md, update
+relevant decisions, save important new prompts or prompt summaries, update
+ideas and open questions, create a session log, record what was changed
+and verified, and record the next recommended action. Keep memory
+accurate, concise, and free from duplication.
+```
+
+
+---
+
+
+# PROMPTS.md template
+
+Part of the optional memory-system bundle (see `HOW_TO_USE.md` → "Optional:
+memory and decision continuity"). Copy into a target repository's root as
+`PROMPTS.md` and fill in. This is a project-specific log of the actual
+large prompts that shaped *that* project — not a generic reusable prompt
+library like this toolkit's own `prompts/` directory, and not a place for
+every conversation message.
+
+```markdown
+# Prompt Library
+
+## How to Use This File
+
+This file stores important prompts, prompt summaries, and reusable
+instruction sets specific to this project. Each prompt is labeled as one
+of: Active, Reference, Experimental, Superseded, Archived.
+
+## Prompt Index
+
+| ID | Name | Type | Status | Purpose |
+|---|---|---|---|---|
+
+## Active Prompts
+
+### PROMPT-001: Name
+
+Status: Active
+
+Purpose:
+
+When to use:
+
+Full prompt or link:
+
+Key requirements:
+
+Known limitations:
+
+## Reference Prompts
+
+Prompts that contain useful ideas but are not currently active.
+
+## Superseded Prompts
+
+Older prompts that were replaced, including the reason they were replaced.
+
+## Prompt Summaries
+
+For large prompts, create a concise summary containing: core objective,
+required behavior, constraints, important preferences, expected output,
+what should not happen, and whether the prompt is still active.
+```
+
+When a very large prompt is supplied: preserve the original (in `sources/`
+if it's a document, or quoted directly here if inline), add an entry to the
+index above, write a concise summary, and extract permanent rules into
+`PROJECT_RULES.md` or current goals into `PROJECT_CONTEXT.md` only where
+appropriate — do not duplicate the full prompt text across multiple files.
+
+
+---
+
+
+# session_logs/ entry template
+
+Part of the optional memory-system bundle (see `HOW_TO_USE.md` → "Optional:
+memory and decision continuity"). Copy into a target repository's
+`session_logs/` directory (create it if needed) as
+`YYYY-MM-DD-session-NN.md` at the end of a meaningful session. Distinct
+from `templates/handoff.md`: a handoff/batch summary is milestone-level and
+goes in `summaries/`; a session log is finer-grained, dated, and written
+every meaningful session, not just at the end of a batch.
+
+```markdown
+# Session Log
+
+## Date
+
+## Session Objective
+
+## Context Read
+
+Files and documents reviewed.
+
+## Work Completed
+
+## Decisions Made
+
+## Alternatives Considered
+
+## Files Changed
+
+## Verification
+
+- Tests:
+- Build:
+- Manual checks:
+- Other validation:
+
+## Incomplete or Blocked Work
+
+## New Ideas
+
+## Context Updates
+
+Which memory files were updated?
+
+## Next Recommended Action
+```
+
+Read the latest entry in `session_logs/` at the start of a session, and
+write a new one at the end of every meaningful session — see
+`PROJECT_RULES.md`'s "Memory Maintenance" section if that file is present.
+
+
+---
+
 
 # Specification template
 
@@ -1465,6 +1986,7 @@ task description) and fill in.
 
 ---
 
+
 # Verification template
 
 Use with `prompts/verification.md`.
@@ -1492,6 +2014,83 @@ Use with `prompts/verification.md`.
 
 ---
 
+
+# Adoption validation checklist
+
+Purpose: prove this toolkit works end-to-end in a real adopting repository
+on a real task, not just internally-consistent within this repository. Added
+by UPDATE-02 (`PROMPTS.md` PROMPT-003) to close the gap flagged in
+`reviews/PRINCIPAL_ENGINEER_REVIEW.md` and carried in `PROJECT_STATUS.md`'s
+risks. Requires explicit approval before running against any specific
+target repository — see `PROJECT_CONSTITUTION.md`'s approval matrix.
+
+## 1. Target-repository preflight
+
+- [ ] Baseline present: target's `CLAUDE.md` exists and traces to
+      `GLOBAL_CLAUDE.md` (diff, or a documented repository-specific
+      addition layered on top of an intact universal section — see
+      `HOW_TO_USE.md`'s drift-check recipe).
+- [ ] Which optional layers are adopted noted explicitly (memory-system
+      bundle from `HOW_TO_USE.md` §3? full governance structure? neither?).
+- [ ] The target's own `CLAUDE.md`/read-order files (if any) are readable
+      and internally consistent — no two competing session-start orders.
+- [ ] Nothing about the target repository requires an approval-matrix
+      action just to observe it (read-only preflight only).
+
+## 2. Choose the test vehicle
+
+- [ ] One bounded, real engineering task selected — small enough to finish
+      in a session, real enough to exercise
+      `chapters/01-daily-operating-loop.md`'s daily operating loop.
+- [ ] The task naturally produces at least one decision worth recording
+      (not manufactured just to exercise `DECISIONS.md`).
+- [ ] The task includes at least one genuine verification step (test, type
+      check, lint, build, or manual check proportionate to the change).
+- [ ] Task chosen or confirmed with the user — not assumed unilaterally.
+
+## 3. Observable pass/fail signals
+
+Record each as pass/fail/partial with the actual evidence, not an assumed
+outcome:
+
+- [ ] The session followed the target's own read order at start.
+- [ ] Existing decisions were reused, not silently re-decided
+      (`GLOBAL_CLAUDE.md` rule 2).
+- [ ] No silent scope expansion beyond the chosen task
+      (`chapters/01-daily-operating-loop.md`).
+- [ ] A usable `DECISIONS.md` entry (or target-repository equivalent) was
+      recorded for the in-task decision.
+- [ ] Verification was proportionate and its result reported honestly
+      (pass/fail/skipped), not asserted.
+- [ ] The session left a credible resume point a future session could act
+      on cold.
+
+## 4. Post-task evaluation
+
+- [ ] Clarity: which instructions were followed easily vs. needed
+      re-reading or guessing?
+- [ ] Friction: where did the toolkit's process add overhead
+      disproportionate to the task's size?
+- [ ] Missing guidance: what did the target repository need that no
+      chapter/prompt/checklist covered?
+- [ ] Harmful or duplicative behavior: did following the toolkit produce
+      worse output than not following it would have?
+
+## 5. Feed findings back
+
+- [ ] Substantial finding → new `SOURCE_REGISTER.md` entry (a real-world
+      finding is itself evidence, tier per
+      `chapters/02-evidence-and-uncertainty.md`).
+- [ ] Any decision made while resolving a finding → `DECISIONS.md` here.
+- [ ] Any chapter contradicted by real use → chapter fix, with the
+      contradiction and fix both recorded in `DECISIONS.md`.
+- [ ] Only anonymized findings (no target-repository proprietary content)
+      are recorded in this repository.
+
+
+---
+
+
 # Chapter review checklist
 
 Before considering a handbook chapter (or prompt/template/checklist) done:
@@ -1514,6 +2113,7 @@ Before considering a handbook chapter (or prompt/template/checklist) done:
 
 ---
 
+
 # Completion checklist
 
 Before reporting a task as done:
@@ -1535,6 +2135,7 @@ Before reporting a task as done:
 
 ---
 
+
 # Editing checklist
 
 While making changes:
@@ -1552,6 +2153,7 @@ While making changes:
 
 
 ---
+
 
 # Investigation checklist
 
@@ -1572,6 +2174,7 @@ Before moving from investigation to planning/implementation:
 
 ---
 
+
 # Performance checklist
 
 Before claiming a change improves performance, or when performance is a
@@ -1591,6 +2194,7 @@ stated acceptance criterion:
 
 ---
 
+
 # Release checklist
 
 Before publish/commit/push/deploy (all of which require explicit approval
@@ -1609,6 +2213,7 @@ per `PROJECT_CONSTITUTION.md`'s approval matrix):
 
 
 ---
+
 
 # Security checklist
 
@@ -1631,6 +2236,7 @@ Before shipping a security-relevant change (see `prompts/security-review.md`):
 
 ---
 
+
 # Source evaluation checklist
 
 Before adding a new entry to `SOURCE_REGISTER.md`:
@@ -1650,6 +2256,7 @@ Before adding a new entry to `SOURCE_REGISTER.md`:
 
 
 ---
+
 
 # Startup checklist
 

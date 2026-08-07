@@ -3,44 +3,43 @@
 Planned work, not yet done. Move items to `CHANGELOG.md` once actually
 completed and verified.
 
-## Open — UPDATE-02 (SRC-003) plan
+## Open
+
+- **Phase 6 — final audit, summaries, version bump.** The only remaining
+  UPDATE-02 (SRC-003) item — see `reviews/UPDATE-02-FINAL-AUDIT.md` when
+  written. All of P0–P3 below, plus SRC-004, are done.
+
+## Done — UPDATE-02 (SRC-003) plan
 
 Bounded plan for `sources/UPDATE-02-claude-global-toolkit-prompt.md`
 (`PROMPTS.md` PROMPT-003), written 2026-08-07 at the start of Phase 0.
-Priorities per UPDATE-02's own phase structure:
 
-- **P0 — false claims, broken references, safety issues found in
-  re-verification.** One found already: `salary-currency-pro/CLAUDE.md` is
-  no longer byte-identical to `GLOBAL_CLAUDE.md` (`DECISIONS.md` D-009) —
-  D-004's "Confirmed byte-identical" claim is now stale and needs
-  correcting wherever it's restated as current fact.
-- ~~**P1 — the real-world validation gap (Phase 1).**~~ Done 2026-08-07 —
+- ~~**P0 — false claims, broken references, safety issues found in
+  re-verification.**~~ Done — one found: `salary-currency-pro/CLAUDE.md`
+  was no longer byte-identical to `GLOBAL_CLAUDE.md` (`DECISIONS.md`
+  D-009); D-004's now-stale "Confirmed byte-identical" claim corrected in
+  `PROJECT_STATUS.md` and here.
+- ~~**P1 — the real-world validation gap (Phase 1).**~~ Done —
   `checklists/adoption-validation.md` created (D-010) and run against
   `salary-currency-pro` with user approval; passed (D-011).
-- ~~**P2a — adoption lifecycle completeness (Phase 2).**~~ Done 2026-08-07
-  — `HOW_TO_USE.md` §6 (drift/update/recovery/removal); D-012 (version
+- ~~**P2a — adoption lifecycle completeness (Phase 2).**~~ Done —
+  `HOW_TO_USE.md` §6 (drift/update/recovery/removal); D-012 (version
   anchor, install scripts re-verified against D-003's four scenarios).
-- ~~**P2b — open-question closure (Phase 3).**~~ Done 2026-08-07 —
-  QUESTION-001 resolved with default (c); QUESTION-002 resolved via
+- ~~**P2b — open-question closure (Phase 3).**~~ Done — QUESTION-001
+  resolved with default (c); QUESTION-002 resolved via
   `prompts/README.md` + `PROMPTS.md` cross-reference. Both moved to
   `OPEN_QUESTIONS.md`'s new Resolved section. `IDEAS.md` swept — nothing
   new to add.
 - ~~**P3a — reproducible health tooling, release discipline (Phase 4).**~~
-  Done 2026-08-07 — `scripts/health-check.ps1`/`.sh` (D-014), versioning
-  policy in `HOW_TO_BUILD.md`.
-- **P3b — exports (Phase 5).** Regenerated Markdown export; PDF/DOCX only
-  if tooling exists or is approved (Pandoc confirmed not installed).
-
-~~**SRC-004 — automatic global loading.**~~ Done 2026-08-07 — implemented
-and verified with user approval mid-batch (D-013); see
-`HOW_TO_USE.md` §7. Folded into UPDATE-02's scope per the user's explicit
-instruction to merge SRC-004 into the in-progress UPDATE-02 work.
-
-Phase 6 (final audit, summaries, session log, status rewrite, 2.2.0
-version bump if genuinely earned) closes out the batch once P0–P3 (and
-SRC-004) are done — see `reviews/UPDATE-02-FINAL-AUDIT.md` when written.
-
-## Open
+  Done — `scripts/health-check.ps1`/`.sh` (D-014), versioning policy in
+  `HOW_TO_BUILD.md`.
+- ~~**P3b — exports (Phase 5).**~~ Done — Markdown export regenerated;
+  Pandoc + wkhtmltopdf installed with user approval, PDF and DOCX exports
+  generated and verified (D-015).
+- ~~**SRC-004 — automatic global loading.**~~ Done — implemented and
+  verified with user approval mid-batch (D-013); see `HOW_TO_USE.md` §7.
+  Folded into UPDATE-02's scope per the user's explicit instruction to
+  merge SRC-004 into the in-progress UPDATE-02 work.
 
 ## Done
 
@@ -77,4 +76,8 @@ SRC-004) are done — see `reviews/UPDATE-02-FINAL-AUDIT.md` when written.
 ## Explicitly out of scope unless requested
 
 - Anything requiring package installation, global configuration changes, or
-  network access — per `PROJECT_CONSTITUTION.md`'s approval matrix.
+  network access — per `PROJECT_CONSTITUTION.md`'s approval matrix. (During
+  UPDATE-02, the user explicitly approved package installation for that
+  session's work — Pandoc/wkhtmltopdf, D-015 — and global config changes
+  — SRC-004, D-013. That was a session-scoped grant, not a standing
+  change to this default; future sessions still need their own approval.)

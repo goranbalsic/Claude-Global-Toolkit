@@ -4,6 +4,49 @@ Log of significant choices for this repository. Newest first. Each entry:
 context, options considered, decision, rejected alternatives, confidence,
 reversibility.
 
+## D-015 — Install Pandoc + wkhtmltopdf and generate PDF/DOCX exports
+
+- **Date:** 2026-08-07
+- **Context:** UPDATE-02 Phase 5 requires PDF/DOCX generation if a
+  converter is already installed, or asking once for approval to install
+  one. The user proactively gave broad approval to install what's needed
+  for this session's work before this point was reached.
+- **Options considered:**
+  1. Install Pandoc (DOCX needs nothing further) plus `wkhtmltopdf` as a
+     lightweight PDF engine.
+  2. Install Pandoc plus a full LaTeX distribution (e.g. MiKTeX) for
+     Pandoc's default `pdflatex` PDF engine.
+  3. Install only Pandoc, generate DOCX, leave PDF blocked.
+- **Decision:** Option 1. `choco install pandoc -y` (3.10.1), then
+  `choco install wkhtmltopdf -y` (0.12.6) after Pandoc's default
+  `pdflatex` engine turned out to not be present either. Regenerated the
+  Markdown export first (same batch, reflecting current content — see
+  `exports/README.md`), then generated
+  `exports/claude-global-toolkit-handbook-2026-08-07.docx` and `.pdf`
+  from it directly (no separate content authored for the exports —
+  straight format conversion of the already-verified Markdown).
+- **Rejected alternatives:** Option 2 rejected — a full TeX distribution
+  is hundreds of MB to GB and disproportionate (`PROJECT_CONSTITUTION.md`
+  engineering principles: minimal reversible changes, effort proportionate
+  to the task) for a documentation export that `wkhtmltopdf` (~80MB)
+  serves just as well. Option 3 rejected — the user's approval covered
+  installing what's needed, and `wkhtmltopdf` is a small, common,
+  reversible (`choco uninstall`) dependency, not a disproportionate ask.
+- **Verification:** Both output files checked with `file` (DOCX:
+  "Microsoft Word 2007+"; PDF: "PDF document, version 1.4") and by
+  directory listing for non-zero size (49,571 / 428,114 bytes). `file`'s
+  PDF page-count heuristic (1289) disagreed with wkhtmltopdf's own live
+  render progress (34 pages) — noted honestly in `exports/README.md`
+  rather than asserting either number as confirmed; both are consistent
+  with a valid, non-empty, real conversion regardless of exact page count.
+- **Confidence:** High for "both files are valid, non-empty, real
+  conversions" (directly verified via `file` and size). Unknown for the
+  PDF's exact page count (conflicting tool reports, not independently
+  resolved).
+- **Reversibility:** Fully reversible — both packages can be removed via
+  `choco uninstall pandoc wkhtmltopdf`; nothing outside this repository's
+  `exports/` directory and these two packages was changed.
+
 ## D-014 — Add scripts/health-check.ps1/.sh and an explicit versioning policy
 
 - **Date:** 2026-08-07

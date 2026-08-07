@@ -89,7 +89,9 @@ deliberately not duplicates of each other; see `DECISIONS.md` D-005.
   earlier, independent real use in the same repository (10 completed
   phases, a real production bug found and fixed there) predating this
   specific run.
-- **PDF/DOCX export not generated.** Requires a document-conversion tool
+- ~~**PDF/DOCX export not generated.**~~ **Resolved 2026-08-07** (UPDATE-02
+  Phase 5) — user approved installing Pandoc + wkhtmltopdf; both exports
+  generated from the regenerated Markdown export and verified (D-015). Requires a document-conversion tool
   (e.g. Pandoc) to be available or its installation explicitly approved —
   neither has happened. `exports/README.md` documents the reproducible
   Markdown-generation command in the meantime; no PDF/DOCX is claimed to

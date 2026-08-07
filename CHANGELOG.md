@@ -12,6 +12,12 @@
   loading via `%USERPROFILE%\.claude\CLAUDE.md` + native `@import`,
   approved by the user, verified directly in two disposable scenarios
   (D-013). Documented in `HOW_TO_USE.md` §7.
+- Added `scripts/health-check.ps1`/`.sh` (read-only mechanical health
+  checks) and an explicit patch/minor/major versioning policy in
+  `HOW_TO_BUILD.md` (D-014).
+- Regenerated the Markdown handbook export for current content; with
+  user approval, installed Pandoc + wkhtmltopdf and generated PDF and
+  DOCX exports for the first time (D-015).
 - No version bump yet — UPDATE-02's Phase 6 (final audit) determines
   whether the 2.2.0 criteria in `HOW_TO_BUILD.md`/`PROJECT_CONSTITUTION.md`
   are genuinely met.

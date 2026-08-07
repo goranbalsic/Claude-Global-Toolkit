@@ -29,6 +29,11 @@ verification, failures, and handoffs.
 Create checklists for: startup, investigation, editing, completion, security,
 performance, release, source evaluation, and chapter review.
 
+*(Net new, not in SRC-001: `checklists/adoption-validation.md`, added by
+UPDATE-02/SRC-003 — see `PROMPTS.md` PROMPT-003 — to close the real-world
+validation gap this chapter's own "Risks if ignored" section didn't yet
+have tooling for.)*
+
 *(This chapter follows that structure — see the "problem / rationale / use
 and non-use / risks / evidence / confidence / verification" headings used
 throughout `chapters/`.)*

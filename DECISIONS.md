@@ -4,6 +4,31 @@ Log of significant choices for this repository. Newest first. Each entry:
 context, options considered, decision, rejected alternatives, confidence,
 reversibility.
 
+## D-010 — Add checklists/adoption-validation.md as a new, genuinely-missing checklist
+
+- **Date:** 2026-08-07
+- **Context:** UPDATE-02 Phase 1 requires a reusable adoption-validation
+  protocol, checked first against existing prompts/checklists for
+  near-duplicates (`HOW_TO_BUILD.md`). Reviewed all 9 existing checklists
+  and 12 prompts; `checklists/startup.md` and `checklists/completion.md`
+  are the closest matches but both operate *within* a single session on
+  *any* project, not on validating whether *this toolkit itself* holds up
+  end-to-end in an adopting repository — a different axis, not a duplicate.
+- **Decision:** Added `checklists/adoption-validation.md` (preflight → test
+  vehicle selection → observable pass/fail signals → post-task evaluation
+  → feedback path), cross-referenced from `README.md`'s structure table and
+  `chapters/06-handbook-templates-and-exports.md`'s checklist inventory
+  (marked as net-new relative to SRC-001, not silently folded into the
+  original list).
+- **Rejected alternatives:** Extending `checklists/completion.md` in place
+  — rejected because it would conflate "is this one task done" with "does
+  the toolkit itself work," muddying both checklists' single responsibility
+  (`chapters/06`'s own "one primary responsibility" rule).
+- **Confidence:** High — genuine gap confirmed by direct comparison, not
+  assumed.
+- **Reversibility:** Fully reversible; one new additive file plus two
+  cross-reference edits.
+
 ## D-009 — Re-verification found salary-currency-pro's CLAUDE.md has diverged from byte-identical; treat as evidence, don't dig further without approval
 
 - **Date:** 2026-08-07

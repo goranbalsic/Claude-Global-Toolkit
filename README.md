@@ -35,7 +35,7 @@ exports; the Markdown and scripts in this repository are authoritative (see
 | `chapters/` | Handbook — one chapter per major topic, with rationale. |
 | `prompts/` | Reusable task prompts for *any* project (resume, investigate, plan, implement, review, ...) — not to be confused with `PROMPTS.md` above. |
 | `templates/` | Fill-in templates (spec, plan, decision, verification, handoff, ...), including an optional memory-system bundle — see `HOW_TO_USE.md` §3. |
-| `checklists/` | Checklists (startup, security, release, ...). |
+| `checklists/` | Checklists (startup, security, release, adoption validation, ...). |
 | `scripts/` | Install scripts (`install.ps1`, `install.sh`). |
 | `reviews/` | Final audits, produced when a review is actually run. |
 | `summaries/` | Batch summaries written after each unit of work. |

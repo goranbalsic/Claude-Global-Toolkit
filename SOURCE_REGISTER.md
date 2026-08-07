@@ -123,14 +123,56 @@ Register of source material this toolkit is derived from, per
 - **Traceable location:** Full text in
   `sources/UPDATE-02-claude-global-toolkit-prompt.md`.
 
+## SRC-004
+
+- **Title:** "UPDATE-02 ADDITION — Make the toolkit Claude Code's automatic
+  global brain" — a supplied requirement that this toolkit load
+  automatically in every Claude Code session, in every project, without
+  per-repository install.
+- **Type:** Supplied reference prompt, appearing directly as a file in
+  `sources/` mid-session (not pasted in chat first) while UPDATE-02
+  (SRC-003) was being executed; the user then explicitly directed it be
+  read and merged into the in-progress UPDATE-02 work.
+- **Location:** `sources/update2addition.txt`.
+- **Date:** Supplied 2026-08-07 (found mid-session, same day as SRC-003).
+- **Authority tier:** Supplied source material — tier 5 of 8 for its
+  prescribed content, tier 2 (explicit user instruction) for the
+  instruction to act — same dual treatment as SRC-002/SRC-003. Its
+  central action (writing `%USERPROFILE%\.claude\CLAUDE.md`) is also a
+  `PROJECT_CONSTITUTION.md` approval-matrix item ("installing packages /
+  altering global config... never automatic") — the document explicitly
+  requires the same approval itself ("Show the proposed change and obtain
+  approval before modifying user-level configuration"), so tier 5/2
+  content does not override the approval-matrix gate.
+- **Claims/recommendations extracted:** Use Claude Code's native
+  user-level `CLAUDE.md` + `@path` import mechanism (verified against
+  official docs — see `DECISIONS.md` for the entry recording this) rather
+  than a background service; keep the toolkit as the canonical,
+  live-referenced (not copied) source; preserve per-project `CLAUDE.md`
+  precedence; back up before changing; verify via a disposable new project
+  and an existing project; document install/verify/update/recovery/
+  removal; record architecture and evidence across `DECISIONS.md`,
+  `HOW_TO_USE.md`, `PROJECT_STATUS.md`, `CHANGELOG.md`, and the UPDATE-02
+  final audit.
+- **Limitations:** Prescribes an outcome ("automatic global brain") without
+  prescribing exact file contents — the exact import syntax/path handling
+  was independently verified against official Claude Code documentation
+  before being proposed, not assumed from this source's wording.
+- **Outdated risk:** Low — mechanism verified same-session against current
+  official docs.
+- **Status:** Registered 2026-08-07; approval requested before executing
+  its core action (global config change) — see `DECISIONS.md`.
+- **Traceable location:** Full text in `sources/update2addition.txt`.
+
 ## Notes
 
-- Three sources on record: SRC-001 (the original toolkit master prompt),
-  SRC-002 (the general memory-system prompt), and SRC-003 (UPDATE-02, this
-  repository's real-world-validation and lifecycle-completeness update). No
+- Four sources on record: SRC-001 (the original toolkit master prompt),
+  SRC-002 (the general memory-system prompt), SRC-003 (UPDATE-02, this
+  repository's real-world-validation and lifecycle-completeness update),
+  and SRC-004 (UPDATE-02 ADDITION, automatic global loading). No
   unresolved conflict between them — each is additive to what came before;
   see `DECISIONS.md` D-005 (SRC-002) and the UPDATE-02 execution decisions
-  (SRC-003).
+  (SRC-003/SRC-004).
 - Add a new `SRC-NNN` entry for any future source incorporated into this
   toolkit (official Claude Code docs, community guidance, etc.), and record
   any conflict with prior sources in `DECISIONS.md`.

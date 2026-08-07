@@ -23,6 +23,7 @@ Archived.
 | PROMPT-001 | Claude Global Toolkit — AIO Master Prompt v2.1.0 | Foundational | Active | Defines this repository's entire governance structure |
 | PROMPT-002 | General Project Memory and Decision System | Extension | Active | Adds context/memory/decision-tracking files on top of PROMPT-001 |
 | PROMPT-003 | UPDATE-02 — from internally consistent to real-world proven | Extension | Active | Six-phase plan: real-world validation, adoption-lifecycle completeness, open-question closure, reproducible health tooling, honest exports, 2.2.0 release |
+| PROMPT-004 | UPDATE-02 ADDITION — automatic global loading | Extension | Active, pending approval for its core action | Make the toolkit load automatically in every Claude Code session via `~/.claude/CLAUDE.md` + native `@import`, without per-repository install |
 
 ## Active Prompts
 

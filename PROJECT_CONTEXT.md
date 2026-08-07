@@ -97,11 +97,13 @@ observed or explicitly stated this session — no others are assumed.
 
 ## Known Risks
 
-See `PROJECT_STATUS.md`'s Risks section for the full, current list. The
-single largest one, per `reviews/PRINCIPAL_ENGINEER_REVIEW.md`: this
-toolkit has been audited for internal consistency but not yet validated by
-a real engineering session actually using it end-to-end in an adopting
-repository.
+See `PROJECT_STATUS.md`'s Risks section for the full, current list.
+Formerly the single largest one, per `reviews/PRINCIPAL_ENGINEER_REVIEW.md`:
+this toolkit had been audited for internal consistency but not yet
+validated by a real engineering session using it end-to-end in an
+adopting repository. **Resolved 2026-08-07** — see `DECISIONS.md` D-011
+(UPDATE-02 Phase 1 adoption-validation run, passed) and D-009 (earlier,
+independent real use found in the same repository).
 
 ## Known Uncertainties
 
@@ -111,13 +113,13 @@ repository.
 
 ## Current Priorities
 
-1. **Finish implementing SRC-002 in this repository** (current work).
-2. **Real-world validation** — observe or support actual use of the
-   installed baseline in `salary-currency-pro` or another adopting
-   repository, and feed findings back into `DECISIONS.md` and the relevant
-   chapter. Flagged in `PROJECT_STATUS.md` and the principal engineer
-   review as the toolkit's biggest untested assumption.
-3. PDF/DOCX export — blocked on tooling availability/approval, lowest
+1. ~~**Finish implementing SRC-002 in this repository.**~~ Done (batch 3–4).
+2. ~~**Real-world validation.**~~ Done 2026-08-07 — see `DECISIONS.md`
+   D-011.
+3. **UPDATE-02 (SRC-003) remaining phases** — adoption lifecycle
+   completeness, open-question closure, reproducible health tooling,
+   honest exports, final audit/2.2.0 release. See `ROADMAP.md`.
+4. PDF/DOCX export — blocked on tooling availability/approval, lowest
    priority (see `ROADMAP.md`).
 
 ## Completed Milestones

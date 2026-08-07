@@ -4,6 +4,64 @@ Log of significant choices for this repository. Newest first. Each entry:
 context, options considered, decision, rejected alternatives, confidence,
 reversibility.
 
+## D-011 — First adoption-validation run: pass, with one process-strengthening finding
+
+- **Date:** 2026-08-07
+- **Context:** UPDATE-02 Phase 1, executed with the user's approval
+  (they chose to let this session propose the task rather than name one),
+  using `checklists/adoption-validation.md` (D-010) against
+  `C:\salary-currency-pro`. Task: add empty-state UI (icon) to three
+  screens (expense tracker, budgets, invoices), following that
+  repository's own session-start order and conventions.
+- **Result against the checklist's observable pass/fail signals:**
+
+  | Signal | Result |
+  |---|---|
+  | Followed target's own read order at start | Pass — `CLAUDE.md` → `PROJECT_CONTEXT.md`/`PROJECT_RULES.md` → `DECISIONS.md` → `PROMPTS.md` → latest `session_logs/` → `OPEN_QUESTIONS.md` → live inspection, matching that repo's stated order exactly |
+  | Existing decisions reused, not re-decided | Pass — reused an existing empty-state widget pattern from a shipped screen, the target's own D-001 "minimal increments" convention, and its `OPEN_QUESTIONS.md` QUESTION-002 scoping default |
+  | No silent scope expansion | Pass — scope was *narrowed*, not expanded, when reality didn't match the task brief (see finding below), and that narrowing was recorded rather than silently done |
+  | Usable decision recorded for the in-task decision | Pass — target repo's own `DECISIONS.md` D-007 |
+  | Verification proportionate and honestly reported | Pass — `flutter analyze` (3 pre-existing unrelated notes, none in touched files) and `flutter test -j 1` (121/121) both actually run; visual/browser verification explicitly stated as unavailable, not implied |
+  | Credible resume point left | Pass — target repo's `PROJECT_CONTEXT.md` and a new `session_logs/` entry updated |
+
+- **Finding (the one genuine discovery from this run):** the task brief
+  this session wrote — "these three screens don't yet have empty-state
+  UI" — was factually wrong. All three already had correct empty-state
+  *messages* from earlier phases; only the icon half of the app's own
+  established empty-state convention was missing. This was caught by the
+  target session actually inspecting the screens before acting
+  (`GLOBAL_CLAUDE.md` rule 1, "inspect before acting") rather than
+  trusting the brief, which prevented wasted work (near-duplicate l10n
+  strings for messages that already existed). This is a positive
+  validation of the toolkit's core "inspect before acting" / "do not
+  invent" principles working as intended under a real, non-manufactured
+  error condition (a wrong assumption supplied by the orchestrating
+  session, not by the toolkit) — not a toolkit gap. No chapter or rule
+  needs correcting as a result; recorded here as evidence the mechanism
+  works, per the checklist's "feed findings back" step.
+- **Deviation from `checklists/adoption-validation.md` step 5.1:** that
+  step suggests a new `SOURCE_REGISTER.md` entry for a substantial
+  finding. Not done here — `SOURCE_REGISTER.md`'s actual defined purpose
+  (per its own header and `chapters/03`) is external supplied reference
+  material (SRC-001/002/003), not internal validation-run findings; this
+  finding fits `DECISIONS.md`'s purpose exactly, so it was recorded here
+  instead, with this note so the deviation isn't silent.
+- **What this resolves:** `PROJECT_STATUS.md`'s and
+  `reviews/PRINCIPAL_ENGINEER_REVIEW.md`'s previously-largest flagged
+  risk — "never used end-to-end on a real engineering task in an
+  adopting repository" — no longer holds as stated. It has now been used
+  end-to-end, observed directly, and passed. (Separately, D-009 already
+  found evidence of *earlier*, independent real use in the same
+  repository — 10 completed phases, a real production bug found and
+  fixed there — that predates and is additional to this specific
+  validation run.)
+- **Confidence:** High — every signal above was directly observed
+  (read-order sequence, actual command output, actual file diffs), not
+  inferred.
+- **Reversibility:** N/A (an observation, not a repository change) for
+  this repository; the underlying `salary-currency-pro` changes are that
+  repository's own, governed by its own conventions.
+
 ## D-010 — Add checklists/adoption-validation.md as a new, genuinely-missing checklist
 
 - **Date:** 2026-08-07

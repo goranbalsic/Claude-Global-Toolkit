@@ -67,6 +67,18 @@ deliberately not duplicates of each other; see `DECISIONS.md` D-005.
 
 ## Risks / open items
 
+- ~~**This toolkit has not yet been used end-to-end on a real engineering
+  task in an adopting repository.**~~ **Resolved 2026-08-07** — UPDATE-02
+  Phase 1 ran the new `checklists/adoption-validation.md` against
+  `C:\salary-currency-pro` with the user's approval: session-start order
+  followed, existing decisions reused, no silent scope expansion,
+  verification honestly reported, credible resume point left. One finding
+  (a wrong task-brief assumption caught by "inspect before acting" before
+  wasted work happened) validated the mechanism rather than exposing a
+  gap. See `DECISIONS.md` D-011. Separately, D-009 found evidence of
+  earlier, independent real use in the same repository (10 completed
+  phases, a real production bug found and fixed there) predating this
+  specific run.
 - **PDF/DOCX export not generated.** Requires a document-conversion tool
   (e.g. Pandoc) to be available or its installation explicitly approved —
   neither has happened. `exports/README.md` documents the reproducible

@@ -14,10 +14,9 @@ Priorities per UPDATE-02's own phase structure:
   no longer byte-identical to `GLOBAL_CLAUDE.md` (`DECISIONS.md` D-009) —
   D-004's "Confirmed byte-identical" claim is now stale and needs
   correcting wherever it's restated as current fact.
-- **P1 — the real-world validation gap (Phase 1).** Create the
-  adoption-validation checklist; ask the required single approval question
-  before touching `salary-currency-pro` further, now informed by the D-009
-  finding.
+- ~~**P1 — the real-world validation gap (Phase 1).**~~ Done 2026-08-07 —
+  `checklists/adoption-validation.md` created (D-010) and run against
+  `salary-currency-pro` with user approval; passed (D-011).
 - **P2 — adoption lifecycle completeness (Phase 2) and open-question
   closure (Phase 3).** Drift/update/recovery/removal docs in
   `HOW_TO_USE.md`; close `OPEN_QUESTIONS.md` QUESTION-001 and QUESTION-002.

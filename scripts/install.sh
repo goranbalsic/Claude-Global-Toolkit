@@ -57,8 +57,13 @@ fi
 
 TARGET_FILE="$TARGET_REPO/CLAUDE.md"
 
+SOURCE_VERSION="$(grep -m1 -E '^version:' "$SOURCE_FILE" | sed -E 's/^version:[[:space:]]*//' || true)"
+if [ -z "$SOURCE_VERSION" ]; then
+    SOURCE_VERSION="Unknown"
+fi
+
 echo "Claude Global Toolkit installer"
-echo "  Source: $SOURCE_FILE"
+echo "  Source: $SOURCE_FILE (version $SOURCE_VERSION)"
 echo "  Target: $TARGET_FILE"
 echo ""
 

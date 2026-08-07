@@ -68,8 +68,14 @@ $sourceContent = Get-Content -LiteralPath $SourceFile -Raw
 $targetExists = Test-Path -LiteralPath $TargetFile -PathType Leaf
 $backupPath = $null
 
+$sourceVersion = "Unknown"
+$versionMatch = [regex]::Match($sourceContent, '(?m)^version:\s*(.+)\s*$')
+if ($versionMatch.Success) {
+    $sourceVersion = $versionMatch.Groups[1].Value.Trim()
+}
+
 Write-Report "Claude Global Toolkit installer"
-Write-Report "  Source: $SourceFile"
+Write-Report "  Source: $SourceFile (version $sourceVersion)"
 Write-Report "  Target: $TargetFile"
 Write-Report ""
 

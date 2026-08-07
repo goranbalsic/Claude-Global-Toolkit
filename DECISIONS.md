@@ -4,6 +4,52 @@ Log of significant choices for this repository. Newest first. Each entry:
 context, options considered, decision, rejected alternatives, confidence,
 reversibility.
 
+## D-012 — Use GLOBAL_CLAUDE.md's frontmatter version as the drift-detection anchor; state it in install-script output
+
+- **Date:** 2026-08-07
+- **Context:** UPDATE-02 Phase 2 asks this repository to evaluate whether
+  `GLOBAL_CLAUDE.md`'s frontmatter `version` should anchor drift detection,
+  and whether install output should state the installed version.
+- **Options considered:**
+  1. Use the frontmatter `version` field (already present, already bumped
+     per `HOW_TO_BUILD.md`'s "Changing GLOBAL_CLAUDE.md" procedure) as the
+     anchor; print it in both install scripts' output header.
+  2. Introduce a separate version-tracking mechanism (e.g. a hash file
+     written into the target repository).
+  3. Leave drift detection purely content-based (`diff`/`fc` only, no
+     version anchor).
+- **Decision:** Option 1. Both `scripts/install.ps1` and `scripts/install.sh`
+  now parse the source file's `version:` frontmatter line and print it in
+  the "Source: ..." line of their output (e.g. `(version 2.1.0)`), giving a
+  human a quick anchor for "is the target behind, or intentionally
+  diverged" without needing to fully diff two multi-page files by eye.
+  `HOW_TO_USE.md` §6 documents the resulting drift-check recipe (`diff`/
+  `fc.exe` plus this version comparison).
+- **Rejected alternatives:** Option 2 rejected — a separate tracking file
+  written into every adopting repository is a new artifact this toolkit
+  would then own the lifecycle of (creation, staleness, removal), for a
+  need the existing frontmatter field already satisfies; violates
+  "minimize reversible changes" / "don't create major new components
+  unless required." Option 3 rejected — content-only diffing works but
+  forces a full read of a 56-line diff to answer a question a one-line
+  version string answers instantly.
+- **Verification:** Both scripts re-tested against disposable directories
+  (`$env:TEMP` / session scratch, never this repository or a real target)
+  through all four D-003 scenarios (create-when-absent, no-op-when-
+  identical, safe-abort-when-unconfirmed, backup-then-overwrite) — all
+  eight runs (4 scenarios × 2 shells) passed, version line printed
+  correctly (`version 2.1.0`) in every case. The PowerShell script's
+  `Read-Host` confirmation prompt cannot take piped stdin from this
+  session's PowerShell tool directly (NonInteractive mode) — worked around
+  by invoking `powershell.exe` through the Bash tool with piped input
+  instead, which is a test-harness detail, not a script defect (the
+  underlying confirm-then-abort behavior is identical to D-003's original
+  finding). Test directories deleted after verification.
+- **Confidence:** High — directly observed script output and exit
+  behavior across all scenarios, not inferred.
+- **Reversibility:** Fully reversible; both changes are additive
+  (one new output line each), no existing behavior altered.
+
 ## D-011 — First adoption-validation run: pass, with one process-strengthening finding
 
 - **Date:** 2026-08-07

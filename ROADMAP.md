@@ -17,9 +17,11 @@ Priorities per UPDATE-02's own phase structure:
 - ~~**P1 — the real-world validation gap (Phase 1).**~~ Done 2026-08-07 —
   `checklists/adoption-validation.md` created (D-010) and run against
   `salary-currency-pro` with user approval; passed (D-011).
-- **P2 — adoption lifecycle completeness (Phase 2) and open-question
-  closure (Phase 3).** Drift/update/recovery/removal docs in
-  `HOW_TO_USE.md`; close `OPEN_QUESTIONS.md` QUESTION-001 and QUESTION-002.
+- ~~**P2a — adoption lifecycle completeness (Phase 2).**~~ Done 2026-08-07
+  — `HOW_TO_USE.md` §6 (drift/update/recovery/removal); D-012 (version
+  anchor, install scripts re-verified against D-003's four scenarios).
+- **P2b — open-question closure (Phase 3).** Close `OPEN_QUESTIONS.md`
+  QUESTION-001 and QUESTION-002.
 - **P3 — reproducible health tooling, release discipline, exports
   (Phases 4–5).** Dependency-free health-check script; explicit versioning
   policy; regenerated Markdown export; PDF/DOCX only if tooling exists or

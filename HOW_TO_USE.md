@@ -110,7 +110,66 @@ session, `checklists/security.md` before shipping a security-relevant
 change, `templates/decision.md` when logging a new entry in that
 repository's `DECISIONS.md`.
 
-## 6. Run the repository health check periodically
+## 6. Check for drift, update, recover, or remove
+
+Added by UPDATE-02 (`PROMPTS.md` PROMPT-003) to complete the adoption
+lifecycle that install-only left unfinished.
+
+**Drift check** — is the target's `CLAUDE.md` still current?
+
+```powershell
+# PowerShell
+fc.exe "C:\path\to\other\repo\CLAUDE.md" GLOBAL_CLAUDE.md
+```
+
+```bash
+# POSIX
+diff /path/to/other/repo/CLAUDE.md GLOBAL_CLAUDE.md
+```
+
+No output / exit 0 means no drift. Any output means the target has either
+been customized (a repository-specific addition appended below the
+universal section, as documented in that repository's own `CLAUDE.md` —
+see `checklists/adoption-validation.md`'s preflight step for how to tell
+the two apart) or is behind this toolkit's current version. Either script
+also states the *source* file's frontmatter `version:` in its own output
+header as a quick anchor — compare it against the target's own frontmatter
+`version:` line (if the target kept one) to tell "behind" from
+"intentionally diverged."
+
+**Update path** — the existing install scripts' backup-then-overwrite
+branch *is* the update mechanism; there is no separate update script. Run
+the same command as section 1 again: if the target's `CLAUDE.md` differs
+from the current `GLOBAL_CLAUDE.md`, the script backs it up
+(`CLAUDE.md.bak.<timestamp>`) and shows a diff before overwriting, exactly
+as it does for a first install onto a pre-existing file. If the target has
+a repository-specific addition appended below the universal section (per
+section 3's guidance), re-apply that addition after updating — the backup
+file has the previous combined content if you need to diff it back in.
+
+**Recovery path** — restore from the timestamped backup the install
+script already made:
+
+```powershell
+Copy-Item "C:\path\to\other\repo\CLAUDE.md.bak.<timestamp>" "C:\path\to\other\repo\CLAUDE.md" -Force
+```
+
+```bash
+cp /path/to/other/repo/CLAUDE.md.bak.<timestamp> /path/to/other/repo/CLAUDE.md
+```
+
+If no `.bak.*` file exists, the target never had a prior `CLAUDE.md` at
+install time (a first-install create, not an overwrite) — there is nothing
+to restore to; delete the file manually if removing.
+
+**Removal** — manual only, never automated (this toolkit has no
+uninstall script and will not gain one — removal is a repository owner's
+call, not something to script unattended). Delete the target's
+`CLAUDE.md` (and, if adopted, section 2's structure files or section 3's
+memory-bundle files) directly; nothing else in the target repository is
+touched by having adopted this toolkit, so nothing else needs cleanup.
+
+## 7. Run the repository health check periodically
 
 See `chapters/05-repository-health-check.md`. Run it before resuming after a
 gap and periodically on long-running projects. It is diagnostic — it does

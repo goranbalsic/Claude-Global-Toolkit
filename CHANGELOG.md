@@ -1,5 +1,21 @@
 # CHANGELOG.md
 
+## Unreleased — 2026-08-07 (UPDATE-02, SRC-003/SRC-004)
+
+- Registered and executed UPDATE-02 (SRC-003) Phases 0–3: Git version
+  control adopted (D-008); real-world validation gap closed via a new
+  `checklists/adoption-validation.md` run against `salary-currency-pro`
+  (D-010, D-011, user-approved); adoption lifecycle completed in
+  `HOW_TO_USE.md` §6 (drift/update/recovery/removal, D-012); both open
+  questions closed (`OPEN_QUESTIONS.md`).
+- Registered and executed SRC-004 (UPDATE-02 ADDITION): automatic global
+  loading via `%USERPROFILE%\.claude\CLAUDE.md` + native `@import`,
+  approved by the user, verified directly in two disposable scenarios
+  (D-013). Documented in `HOW_TO_USE.md` §7.
+- No version bump yet — UPDATE-02's Phase 6 (final audit) determines
+  whether the 2.2.0 criteria in `HOW_TO_BUILD.md`/`PROJECT_CONSTITUTION.md`
+  are genuinely met.
+
 ## Unreleased — 2026-08-07 (batch 4)
 
 - Implemented `IDEAS.md` IDEA-001: folded SRC-002's memory-system additions

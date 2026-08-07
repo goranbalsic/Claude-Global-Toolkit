@@ -9,6 +9,16 @@ deliberately not duplicates of each other; see `DECISIONS.md` D-005.
 
 ## Completed
 
+- **Automatic global loading implemented (SRC-004, D-013).** With user
+  approval, created `C:\Users\Administrator\.claude\CLAUDE.md` importing
+  `GLOBAL_CLAUDE.md` live via Claude Code's native `@import` mechanism —
+  the toolkit's ten universal rules now load in every Claude Code session,
+  in every project, without per-repository install, and stay live (no
+  stale copies). Verified directly with `claude -p` in two disposable
+  scenarios: a new project with no local `CLAUDE.md` (global + imported
+  baseline loaded, rule 1 quoted verbatim) and an existing project with
+  its own local `CLAUDE.md` (all three files loaded, project-specific rule
+  correctly took precedence). Documented in `HOW_TO_USE.md` §7.
 - **IDEA-001 implemented.** SRC-002's memory-system additions are now also
   available to other adopting repositories: six generalized templates
   under `templates/` and a new `HOW_TO_USE.md` §3 documenting them as an

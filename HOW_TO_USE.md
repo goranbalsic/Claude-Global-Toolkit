@@ -169,7 +169,58 @@ call, not something to script unattended). Delete the target's
 memory-bundle files) directly; nothing else in the target repository is
 touched by having adopted this toolkit, so nothing else needs cleanup.
 
-## 7. Run the repository health check periodically
+## 7. Load the toolkit automatically in every session (optional, global)
+
+Added by SRC-004 (`sources/update2addition.txt`, `PROMPTS.md` PROMPT-004,
+`DECISIONS.md` D-013). Instead of installing `GLOBAL_CLAUDE.md` into each
+repository individually (sections 1–2), you can make it load automatically
+in *every* Claude Code session, in every project, via Claude Code's
+user-level global instructions file.
+
+**Install:** create `%USERPROFILE%\.claude\CLAUDE.md` (back it up first —
+`Copy-Item` / `cp` to a timestamped `.bak.<date>` — if one already exists;
+this step is manual, there is no script for this layer) containing:
+
+```
+# Global Claude Code instructions
+
+@C:/Claude-Global-Toolkit/GLOBAL_CLAUDE.md
+
+A project's own CLAUDE.md, if present, loads alongside this file and its
+instructions take precedence over anything above wherever the two conflict.
+```
+
+Adjust the `@` path if this toolkit lives somewhere other than
+`C:\Claude-Global-Toolkit` on your machine. Only `GLOBAL_CLAUDE.md` is
+imported — not this repository's own `PROJECT_STATUS.md`/`DECISIONS.md`/
+etc. — to keep global context footprint small and avoid leaking this
+toolkit's own project history into unrelated repositories.
+
+**Verify:** run `claude -p "list every CLAUDE.md file loaded into your
+context this session, with full paths"` from any directory (a disposable
+empty one is the cleanest test). You should see your new global file and,
+imported from it, `GLOBAL_CLAUDE.md`. In a directory that also has its own
+`CLAUDE.md`, all three should be listed, and a project-specific rule
+should win over anything conflicting in the global layer. `/memory` or
+`/context` inside an interactive session show the same information.
+
+**Update:** nothing to do — the `@import` is live. Editing
+`GLOBAL_CLAUDE.md` here (following `HOW_TO_BUILD.md`'s "Changing
+GLOBAL_CLAUDE.md" procedure) takes effect in every session immediately,
+with no per-repository reinstall.
+
+**Recover:** restore your own backup of the previous
+`%USERPROFILE%\.claude\CLAUDE.md`, taken before you created/edited this
+one — same manual process as any file backup, since this layer isn't
+managed by `scripts/install.*`.
+
+**Remove:** delete `%USERPROFILE%\.claude\CLAUDE.md`, or delete just the
+`@import` line if you want to keep other global instructions you've added
+around it. Nothing else on the system is affected — this layer never
+installs packages, alters other global config, or touches any project's
+own files.
+
+## 8. Run the repository health check periodically
 
 See `chapters/05-repository-health-check.md`. Run it before resuming after a
 gap and periodically on long-running projects. It is diagnostic — it does

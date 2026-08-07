@@ -4,6 +4,90 @@ Log of significant choices for this repository. Newest first. Each entry:
 context, options considered, decision, rejected alternatives, confidence,
 reversibility.
 
+## D-013 — Load the toolkit automatically everywhere via ~/.claude/CLAUDE.md + native @import
+
+- **Date:** 2026-08-07
+- **Context:** SRC-004 (`sources/update2addition.txt`) requires this
+  toolkit apply automatically in every Claude Code session, in every
+  project, without per-repository install, while keeping the toolkit as
+  the live canonical source (no stale per-project copies) and preserving
+  project-specific `CLAUDE.md` precedence. Its core action — writing
+  `%USERPROFILE%\.claude\CLAUDE.md` — is a `PROJECT_CONSTITUTION.md`
+  approval-matrix item (global config); the user was asked and approved
+  creating it (no prior file existed, so this was a create, not an
+  overwrite — no backup needed).
+- **Mechanism verified against official docs before proposing** (not
+  assumed): `~/.claude/CLAUDE.md` loads automatically every session
+  regardless of working directory; `@path` import syntax pulls in another
+  file's content live, recursive up to 4 hops; project-level `CLAUDE.md`
+  loads alongside user-level and takes precedence on conflict; `/memory`/
+  `/context` (or, for scripted verification, `claude -p` asking what
+  loaded) can confirm what actually loaded.
+- **Options considered:**
+  1. `~/.claude/CLAUDE.md` containing a live `@import` of
+     `C:\Claude-Global-Toolkit\GLOBAL_CLAUDE.md` — no content duplication,
+     toolkit updates apply globally the moment `GLOBAL_CLAUDE.md` changes.
+  2. `~/.claude/CLAUDE.md` containing a full copy of `GLOBAL_CLAUDE.md`'s
+     text.
+  3. A background service/hook that injects the toolkit's content into
+     every session.
+- **Decision:** Option 1. Wrote
+  `C:\Users\Administrator\.claude\CLAUDE.md`:
+
+  ```
+  # Global Claude Code instructions
+
+  This file loads automatically in every Claude Code session...
+
+  @C:/Claude-Global-Toolkit/GLOBAL_CLAUDE.md
+
+  Canonical source of truth: `C:\Claude-Global-Toolkit`...
+
+  A project's own `CLAUDE.md`, if present, loads alongside this file and
+  its instructions take precedence over anything above wherever the two
+  conflict...
+  ```
+
+  Only `GLOBAL_CLAUDE.md` (the 10 universal rules) is imported — not
+  `PROJECT_STATUS.md`, `DECISIONS.md`, or anything else from this
+  toolkit's own project history — satisfying SRC-004's "never copy
+  toolkit-specific project history... into application context" and
+  "load only the universal operating rules by default" requirements.
+- **Rejected alternatives:** Option 2 rejected — exactly the "stale copy"
+  problem SRC-004 explicitly asked to avoid; a future `GLOBAL_CLAUDE.md`
+  edit wouldn't propagate without manually re-copying. Option 3 rejected
+  — SRC-004 itself says not to build a fragile background service when
+  native imports work, and one does.
+- **Verification performed (real, both required scenarios):**
+  - **Disposable new project** (no local `CLAUDE.md`): ran
+    `claude -p "..."` from a fresh empty directory asking what loaded.
+    Reported two files —
+    `C:\Users\Administrator\.claude\CLAUDE.md` and, imported from it,
+    `C:\Claude-Global-Toolkit\GLOBAL_CLAUDE.md` — and quoted rule 1's
+    exact text, matching the source verbatim.
+  - **Disposable existing project** (with its own local `CLAUDE.md`
+    containing a synthetic project-specific rule: "refer to blue as
+    'zorp'"): ran `claude -p "..."` asking what loaded and which rule
+    would govern a specific case. Reported all three files (global →
+    imported baseline → project-local) and correctly identified the
+    project-local rule as governing, attributed to the correct file —
+    direct evidence project-specific instructions take precedence as
+    required.
+  - Both test directories were outside this repository, under session
+    scratch, and deleted after verification (consistent with D-003's
+    testing pattern).
+- **What was not done:** No project's own `CLAUDE.md` files were modified
+  by this change — only the new user-level file. `HOW_TO_USE.md` §7 now
+  documents install/verify/update/recovery/removal for this layer, per
+  SRC-004's explicit requirement. `PROJECT_STATUS.md`/`CHANGELOG.md`
+  updated in the same batch.
+- **Confidence:** Confirmed — both the import mechanism (official docs)
+  and the resulting behavior (direct `claude -p` verification, two
+  independent scenarios) were actually checked, not assumed.
+- **Reversibility:** Fully reversible — delete or edit
+  `C:\Users\Administrator\.claude\CLAUDE.md`; nothing else on the system
+  was touched, no packages installed, no other global config changed.
+
 ## D-012 — Use GLOBAL_CLAUDE.md's frontmatter version as the drift-detection anchor; state it in install-script output
 
 - **Date:** 2026-08-07

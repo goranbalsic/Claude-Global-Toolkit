@@ -5,9 +5,9 @@ instruction file, a handbook explaining the reasoning behind it, and an
 on-demand library of prompts, templates, checklists, and install scripts for
 adopting the baseline in any repository.
 
-Toolkit version: 2.1.0 · Last reviewed: 2026-08-07
+Toolkit version: 2.2.0 · Last reviewed: 2026-08-07
 
-This repository is generated from two sources in `sources/` (see
+This repository is generated from four sources in `sources/` (see
 `SOURCE_REGISTER.md`): the original master-prompt PDF (SRC-001) and a
 memory/decision-system prompt (SRC-002, `update.txt`). Both are reference
 exports; the Markdown and scripts in this repository are authoritative (see

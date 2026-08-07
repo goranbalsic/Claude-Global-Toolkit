@@ -1,6 +1,6 @@
 ---
 title: Project Constitution — Claude Global Toolkit
-version: 2.1.0
+version: 2.2.0
 last_reviewed: 2026-08-07
 ---
 

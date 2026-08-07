@@ -1,6 +1,6 @@
 # PROJECT_STATUS.md
 
-_Last updated: 2026-08-07 (batch 4)_
+_Last updated: 2026-08-07 (batch 5, UPDATE-02/SRC-004 release, version 2.2.0)_
 
 This file is the build-progress ledger (what's built, verified, and open).
 For the higher-altitude "why this project exists / what the user wants /
@@ -9,16 +9,48 @@ deliberately not duplicates of each other; see `DECISIONS.md` D-005.
 
 ## Completed
 
-- **Automatic global loading implemented (SRC-004, D-013).** With user
-  approval, created `C:\Users\Administrator\.claude\CLAUDE.md` importing
-  `GLOBAL_CLAUDE.md` live via Claude Code's native `@import` mechanism —
-  the toolkit's ten universal rules now load in every Claude Code session,
-  in every project, without per-repository install, and stay live (no
-  stale copies). Verified directly with `claude -p` in two disposable
-  scenarios: a new project with no local `CLAUDE.md` (global + imported
-  baseline loaded, rule 1 quoted verbatim) and an existing project with
-  its own local `CLAUDE.md` (all three files loaded, project-specific rule
-  correctly took precedence). Documented in `HOW_TO_USE.md` §7.
+- **UPDATE-02 (SRC-003) and SRC-004 fully executed and released as 2.2.0.**
+  Full phase-by-phase status: `reviews/UPDATE-02-FINAL-AUDIT.md`. Decision
+  log: `DECISIONS.md` D-008 through D-015. Batch summary:
+  `summaries/BATCH-05-update-02.md`. In brief:
+  - This repository is now under Git version control (D-008), local-only,
+    no remote.
+  - **The toolkit's largest previously-flagged risk — never validated
+    end-to-end on a real engineering task — is resolved.**
+    `checklists/adoption-validation.md` (new) was run against
+    `C:\salary-currency-pro` with user approval; every observable
+    pass/fail signal passed (D-011). Separately, re-verification found
+    independent evidence that repository had already adopted the memory
+    system and used it through 10 real phases, including a real
+    production bug found and fixed there, before this session (D-009).
+  - Adoption lifecycle completed: drift check, update path, recovery
+    path, and removal all documented in `HOW_TO_USE.md` §6 (D-012).
+  - Both standing open questions closed — `OPEN_QUESTIONS.md`'s Resolved
+    section.
+  - **Automatic global loading implemented and verified (SRC-004,
+    D-013).** With user approval, created
+    `C:\Users\Administrator\.claude\CLAUDE.md` importing `GLOBAL_CLAUDE.md`
+    live via Claude Code's native `@import` mechanism — the toolkit's ten
+    universal rules now load in every Claude Code session, in every
+    project, without per-repository install. Verified directly with
+    `claude -p` in two disposable scenarios (new project; existing
+    project with its own local `CLAUDE.md`, correctly taking precedence).
+    Documented in `HOW_TO_USE.md` §7.
+  - Reproducible mechanical health-check scripts added
+    (`scripts/health-check.ps1`/`.sh`, D-014), cross-referenced from
+    `chapters/05`. A real performance bug (subprocess-spawn overhead) was
+    found and fixed during testing. An explicit patch/minor/major
+    versioning policy was added to `HOW_TO_BUILD.md`.
+  - **PDF/DOCX export generated for the first time.** User approved
+    installing Pandoc + wkhtmltopdf; both exports generated from the
+    regenerated Markdown export and verified non-empty/format-valid
+    (D-015).
+  - Version bumped `2.1.0` → `2.2.0` across all four version-carrying
+    locations (`CLAUDE.md`/`GLOBAL_CLAUDE.md`/`PROJECT_CONSTITUTION.md`
+    frontmatter, `README.md`'s plain-text line) — a minor release per the
+    new versioning policy. `GLOBAL_CLAUDE.md`'s rule *text* is unchanged
+    throughout this entire batch (only its version label moved) —
+    confirmed via `git diff` against the first commit, not assumed.
 - **IDEA-001 implemented.** SRC-002's memory-system additions are now also
   available to other adopting repositories: six generalized templates
   under `templates/` and a new `HOW_TO_USE.md` §3 documenting them as an
@@ -26,115 +58,69 @@ deliberately not duplicates of each other; see `DECISIONS.md` D-005.
 - **SRC-002 ("General Project Memory and Decision System") implemented.**
   `sources/update.txt` reconciled against existing governance rather than
   duplicated — see `DECISIONS.md` D-005 (file-by-file mapping) and D-006
-  (merged session-start order). New: `PROJECT_CONTEXT.md`,
-  `PROJECT_RULES.md`, `PROMPTS.md`, `IDEAS.md`, `OPEN_QUESTIONS.md`,
-  `memory/`, `session_logs/`. Reused as-is: `DECISIONS.md`, `CHANGELOG.md`,
-  `summaries/`. Cross-reference check re-run on the enlarged repository (64
-  files, 805 `.md` references, all resolve); found and fixed one genuine
-  stale-fact inconsistency in `chapters/06-handbook-templates-and-exports.md`
-  in the process. See `session_logs/2026-08-07-session-01.md`.
-
+  (merged session-start order). See `session_logs/2026-08-07-session-01.md`.
 - Full reusable project structure generated from
   `sources/Claude_Global_Toolkit_AIO_Master_Prompt_v2.1.pdf` (SRC-001, fully
-  read and reconciled — text confirmed to match verbatim, pages 1–9): root
-  governance files, `chapters/` (8), `prompts/` (12), `templates/` (7),
-  `checklists/` (9), `scripts/install.ps1`/`install.sh`, and `reviews/`,
-  `summaries/`, `exports/` scaffolding. See
+  read and reconciled — text confirmed to match verbatim, pages 1–9). See
   `summaries/BATCH-01-initial-toolkit-build.md`.
 - Both install scripts verified end to end against disposable test
-  repositories: all four cases (create-when-absent, no-op-when-identical,
+  repositories, most recently after the D-012 version-line change: all
+  four cases (create-when-absent, no-op-when-identical,
   safe-abort-when-unconfirmed, backup-then-overwrite) passed for both
-  PowerShell and POSIX shell versions (`DECISIONS.md` D-003).
-- **A real (non-disposable) target repository is confirmed carrying the
-  installed baseline — and has since diverged from it.** As of D-004
-  (2026-08-07, earlier same day), `C:\salary-currency-pro\CLAUDE.md` was
-  byte-identical to this repository's `GLOBAL_CLAUDE.md`. Re-verified
-  during UPDATE-02 Phase 0 (2026-08-07, later same day): it is **no
-  longer** byte-identical — the universal ten-rule baseline is still
-  intact, but a repository-specific section has been appended referencing
-  that project's own `PROJECT_CONTEXT.md`/`PROJECT_RULES.md`/`PROMPTS.md`/
-  `session_logs/`/`DECISIONS.md` D-005, consistent with that repository
-  having adopted this toolkit's optional memory-system bundle on its own.
-  See `DECISIONS.md` D-009 — this is the first direct evidence of possible
-  real-world use and feeds directly into UPDATE-02 Phase 1.
+  PowerShell and POSIX shell versions.
 - **Claude Code version compatibility verified.** Installed CLI confirmed as
-  `2.1.224` on Windows 11, no breaking changes found against this toolkit's
-  assumptions. Scoped to this version/date/OS — see
-  `chapters/07-compatibility-and-persistence.md` → "Compatibility
-  (verified)".
-- **Full final audit run.** `reviews/FINAL_AUDIT.md` (mechanical: links,
-  empty files, duplication, source mappings — 215 cross-references checked,
-  zero broken) and `reviews/PRINCIPAL_ENGINEER_REVIEW.md` (judgment-level)
-  both written. Three real documentation inconsistencies found and fixed:
-  a stale claim in `chapters/04-reusable-project-structure.md`, a path-
-  qualification nit in `chapters/06-handbook-templates-and-exports.md`, and
-  a resolved contradiction between `ROADMAP.md` and this file's prior
-  version regarding install-run status.
-- **Markdown export generated:**
-  `exports/claude-global-toolkit-handbook-2026-08-07.md` — verified
-  non-empty (59,725 bytes), contains all 8 chapters, 12 prompts, 7
-  templates, 9 checklists.
+  `2.1.224` on Windows 11 (re-confirmed unchanged this batch), no breaking
+  changes found against this toolkit's assumptions. Scoped to this
+  version/date/OS — see `chapters/07-compatibility-and-persistence.md` →
+  "Compatibility (verified)".
+- **Two final audits on record.** `reviews/FINAL_AUDIT.md` +
+  `reviews/PRINCIPAL_ENGINEER_REVIEW.md` (batch 2, mechanical + judgment
+  review of the original toolkit build) and
+  `reviews/UPDATE-02-FINAL-AUDIT.md` (batch 5, this release).
+- **Exports current and complete.**
+  `exports/claude-global-toolkit-handbook-2026-08-07.md` (regenerated
+  this batch, 78,696 bytes, all 8 chapters/13 prompts/13 templates/10
+  checklists verified present), `.docx` (49,571 bytes), `.pdf` (428,114
+  bytes) — see `exports/README.md`.
 
 ## Risks / open items
 
-- ~~**This toolkit has not yet been used end-to-end on a real engineering
-  task in an adopting repository.**~~ **Resolved 2026-08-07** — UPDATE-02
-  Phase 1 ran the new `checklists/adoption-validation.md` against
-  `C:\salary-currency-pro` with the user's approval: session-start order
-  followed, existing decisions reused, no silent scope expansion,
-  verification honestly reported, credible resume point left. One finding
-  (a wrong task-brief assumption caught by "inspect before acting" before
-  wasted work happened) validated the mechanism rather than exposing a
-  gap. See `DECISIONS.md` D-011. Separately, D-009 found evidence of
-  earlier, independent real use in the same repository (10 completed
-  phases, a real production bug found and fixed there) predating this
-  specific run.
-- ~~**PDF/DOCX export not generated.**~~ **Resolved 2026-08-07** (UPDATE-02
-  Phase 5) — user approved installing Pandoc + wkhtmltopdf; both exports
-  generated from the regenerated Markdown export and verified (D-015). Requires a document-conversion tool
-  (e.g. Pandoc) to be available or its installation explicitly approved —
-  neither has happened. `exports/README.md` documents the reproducible
-  Markdown-generation command in the meantime; no PDF/DOCX is claimed to
-  exist.
-- **This toolkit has not yet been used end-to-end on a real engineering
-  task in an adopting repository.** `salary-currency-pro` has the baseline
-  file installed, but there is no evidence yet that a session there has
-  followed the daily operating loop, exercised an approval-matrix case, or
-  found a chapter that doesn't hold up under real use. Flagged as the
-  toolkit's largest untested assumption in
-  `reviews/PRINCIPAL_ENGINEER_REVIEW.md`.
 - **Version compatibility is a point-in-time fact, not self-updating.**
   `2.1.224` was confirmed 2026-08-07; nothing in this toolkit detects a
   future Claude Code upgrade automatically. Re-run `claude --version` and
   update `chapters/07-compatibility-and-persistence.md` after any upgrade
   before relying on the "verified" section as current.
+- **PDF's exact page count is unresolved.** `file`'s heuristic (1289)
+  disagrees with wkhtmltopdf's own live render log (34); both files are
+  confirmed valid and non-empty regardless — see `exports/README.md`.
+  Low stakes, not blocking.
+- No other open risks carried forward from this batch — see
+  `reviews/UPDATE-02-FINAL-AUDIT.md` for the full check.
 
 ## Measurable success criteria (chapters/05-repository-health-check.md)
 
 | Criterion | Status |
 |---|---|
-| No unresolved broken links in reviewed scope | Met — 215 cross-references checked, all resolve |
+| No unresolved broken links in reviewed scope | Met — `scripts/health-check.sh` final run: 103 pass, 0 fail, 0 skip |
 | Every substantive recommendation has a source mapping | Met |
 | No known duplicate guidance | Met |
 | Every workflow includes a verification step | Met |
-| Every major decision traces to `DECISIONS.md` | Met — D-001 through D-007 |
-| No empty or corrupt planned deliverable remains | Met |
-| Version-sensitive claims include version/date or verification instruction | Met — Claude Code compatibility verified and dated |
+| Every major decision traces to `DECISIONS.md` | Met — D-001 through D-015 |
+| No empty or corrupt planned deliverable remains | Met — health-check script check 4 |
+| Version-sensitive claims include version/date or verification instruction | Met |
 | `PROJECT_STATUS.md` states completed work, risks, remaining work, resume point | Met — this file |
 
 ## Exact resume point
 
-`ROADMAP.md`'s "Open" section (PDF/DOCX export, blocked on tooling approval)
-remains the only committed-and-open item. `IDEAS.md` IDEA-001 is now
-Implemented; `OPEN_QUESTIONS.md` QUESTION-001 (what `memory/` should hold)
-remains genuinely open and non-blocking. Beyond those, this toolkit's own
-biggest gap is still real-world validation, not more internal documentation
-work — see `PROJECT_CONTEXT.md`'s "Current Priorities" and the risk item
-below. A
-future session should prioritize either (a) getting explicit approval and
-tooling for PDF/DOCX export, or (b) observing/supporting actual use of the
-installed baseline in `salary-currency-pro` (or another adopting
-repository) and feeding findings back into `DECISIONS.md` and the relevant
-chapter, over generating further documentation-only batches in this
-repository. Session-start order for any future session: follow `CLAUDE.md`'s
-"Start or resume" section, which is now the single canonical order.
+`ROADMAP.md` has no committed-and-open item remaining from UPDATE-02/SRC-004
+— all of it shipped in the 2.2.0 release. `OPEN_QUESTIONS.md` has no open
+entries (both resolved this batch); `IDEAS.md` has none pending. A future
+session has no forced next action from this batch — pick up whatever the
+user asks for next, or, absent a specific request, sweep
+`IDEAS.md`/`OPEN_QUESTIONS.md` for anything newly relevant before starting
+new work, per `chapters/01-daily-operating-loop.md`. Session-start order
+for any future session: follow `CLAUDE.md`'s "Start or resume" section,
+which is the single canonical order (and, since SRC-004, also loads
+automatically as part of `~/.claude/CLAUDE.md`'s import in *any* other
+project via `GLOBAL_CLAUDE.md` — but that file's ten rules only, not this
+repository's own deeper history).

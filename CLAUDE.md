@@ -1,6 +1,6 @@
 ---
 title: Claude Global Toolkit — repository operating instructions
-version: 2.1.0
+version: 2.2.0
 last_reviewed: 2026-08-07
 ---
 

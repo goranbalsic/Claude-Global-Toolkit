@@ -1,76 +1,43 @@
 # CHANGELOG.md
 
-## Unreleased — 2026-08-07 (UPDATE-02, SRC-003/SRC-004)
+## 2.2.0 — 2026-08-07
 
-- Registered and executed UPDATE-02 (SRC-003) Phases 0–3: Git version
-  control adopted (D-008); real-world validation gap closed via a new
-  `checklists/adoption-validation.md` run against `salary-currency-pro`
-  (D-010, D-011, user-approved); adoption lifecycle completed in
-  `HOW_TO_USE.md` §6 (drift/update/recovery/removal, D-012); both open
-  questions closed (`OPEN_QUESTIONS.md`).
-- Registered and executed SRC-004 (UPDATE-02 ADDITION): automatic global
-  loading via `%USERPROFILE%\.claude\CLAUDE.md` + native `@import`,
-  approved by the user, verified directly in two disposable scenarios
-  (D-013). Documented in `HOW_TO_USE.md` §7.
-- Added `scripts/health-check.ps1`/`.sh` (read-only mechanical health
-  checks) and an explicit patch/minor/major versioning policy in
-  `HOW_TO_BUILD.md` (D-014).
-- Regenerated the Markdown handbook export for current content; with
-  user approval, installed Pandoc + wkhtmltopdf and generated PDF and
-  DOCX exports for the first time (D-015).
-- No version bump yet — UPDATE-02's Phase 6 (final audit) determines
-  whether the 2.2.0 criteria in `HOW_TO_BUILD.md`/`PROJECT_CONSTITUTION.md`
-  are genuinely met.
+Minor release per `HOW_TO_BUILD.md`'s versioning policy (new capability,
+no change to `GLOBAL_CLAUDE.md`'s ten rules or the install scripts'
+contract — see `reviews/UPDATE-02-FINAL-AUDIT.md`). Consolidates batches
+2–4 and the UPDATE-02/SRC-004 batch, all previously logged as
+"Unreleased" below.
 
-## Unreleased — 2026-08-07 (batch 4)
+- **UPDATE-02 (SRC-003) Phases 0–5, executed with SRC-004 folded in
+  mid-batch:** Git version control adopted (D-008); real-world validation
+  gap closed via a new `checklists/adoption-validation.md` run against
+  `salary-currency-pro`, passed (D-010, D-011, user-approved); adoption
+  lifecycle completed in `HOW_TO_USE.md` §6 (drift/update/recovery/
+  removal, D-012); both open questions closed (`OPEN_QUESTIONS.md`);
+  automatic global loading via `%USERPROFILE%\.claude\CLAUDE.md` + native
+  `@import`, approved and verified in two disposable scenarios (D-013,
+  SRC-004, `HOW_TO_USE.md` §7); `scripts/health-check.ps1`/`.sh` added
+  plus an explicit versioning policy (D-014); Markdown export
+  regenerated, PDF/DOCX generated for the first time with approved
+  Pandoc/wkhtmltopdf installation (D-015). Full phase-by-phase status:
+  `reviews/UPDATE-02-FINAL-AUDIT.md`.
+- **Batch 4:** Implemented `IDEAS.md` IDEA-001 — folded SRC-002's
+  memory-system additions into this toolkit's reusable offering (six new
+  generalized templates, `HOW_TO_USE.md` §3, `DECISIONS.md` D-007).
+- **Batch 3:** Implemented SRC-002 ("General Project Memory and Decision
+  System"), reconciled against existing governance (`DECISIONS.md` D-005,
+  D-006) — new `PROJECT_CONTEXT.md`, `PROJECT_RULES.md`, `PROMPTS.md`,
+  `IDEAS.md`, `OPEN_QUESTIONS.md`, `memory/README.md`, `session_logs/`.
+- **Batch 2:** Full final audit (`reviews/FINAL_AUDIT.md`,
+  `reviews/PRINCIPAL_ENGINEER_REVIEW.md`); Claude Code `2.1.224`
+  compatibility verified; real target-repository install confirmed
+  (`DECISIONS.md` D-004); first Markdown handbook export generated.
 
-- Implemented `IDEAS.md` IDEA-001: folded SRC-002's memory-system additions
-  into this toolkit's reusable offering — six new generalized templates
-  (`templates/project-context.md`, `project-rules.md`, `prompt-library.md`,
-  `ideas-backlog.md`, `open-questions.md`, `session-log.md`) plus a new
-  `HOW_TO_USE.md` §3 documenting them as an opt-in bundle. `GLOBAL_CLAUDE.md`
-  itself was not changed (`DECISIONS.md` D-007).
-- IDEA-001 moved from Deferred to Implemented in `IDEAS.md`.
+## Unreleased
 
-## Unreleased — 2026-08-07 (batch 3)
-
-- Implemented SRC-002 ("General Project Memory and Decision System",
-  `sources/update.txt`), reconciled against the existing SRC-001-derived
-  governance rather than duplicated — see `DECISIONS.md` D-005, D-006.
-- New: `PROJECT_CONTEXT.md`, `PROJECT_RULES.md`, `PROMPTS.md`, `IDEAS.md`,
-  `OPEN_QUESTIONS.md`, `memory/README.md`, `session_logs/` (with its first
-  log, `session_logs/2026-08-07-session-01.md`).
-- Reused as-is (no duplicate created): `DECISIONS.md`, `CHANGELOG.md`,
-  `summaries/`.
-- Merged SRC-002's session-start order into `CLAUDE.md`'s existing one,
-  rather than leaving two competing orders (`DECISIONS.md` D-006).
-- Found and fixed a genuine stale-fact inconsistency in
-  `chapters/06-handbook-templates-and-exports.md` (still said no audit had
-  been run, after batch 2's audit already had been) while re-running the
-  cross-reference check on the enlarged repository (64 files, 805
-  references checked, all resolve).
-- Updated `README.md`'s structure table and `sources/README.md` to cover
-  SRC-002/`update.txt` and all new files/directories.
-- No version bump — governance/memory-system additions, not changes to
-  `GLOBAL_CLAUDE.md`'s ten universal rules or the handbook's core content.
-
-## Unreleased — 2026-08-07 (batch 2)
-
-- Ran the full final audit (`reviews/FINAL_AUDIT.md`,
-  `reviews/PRINCIPAL_ENGINEER_REVIEW.md`) — found and fixed three
-  documentation inconsistencies (stale claim in chapter 04, path-
-  qualification nit in chapter 06, a resolved contradiction between
-  `ROADMAP.md` and `PROJECT_STATUS.md` on install-run status).
-- Verified Claude Code version compatibility: `2.1.224` confirmed installed,
-  no breaking changes found (`chapters/07-compatibility-and-persistence.md`,
-  `SOURCE_REGISTER.md`).
-- Confirmed a real (non-disposable) target repository
-  (`C:\salary-currency-pro`) carries the installed baseline
-  (`DECISIONS.md` D-004).
-- Generated the first Markdown handbook export
-  (`exports/claude-global-toolkit-handbook-2026-08-07.md`).
-- No version bump — these are audit/verification/export deliverables, not
-  content changes to `GLOBAL_CLAUDE.md` or the handbook's substance.
+_Nothing pending — this file's contents are moved into a dated release
+section, per `HOW_TO_BUILD.md`'s versioning policy, once a batch of work
+warrants a version bump._
 
 ## 2.1.0 — 2026-08-07
 

@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Make scripts executable
-        run: chmod +x bin/ctk tests/run.sh hooks/*.sh modules/*/scripts/*.sh || true
+        run: chmod +x bin/ctk tests/run.sh hooks/*.sh modules/*/scripts/*.sh router/*.sh || true
 
       - name: Token budget
         # The always-loaded surface is a build constraint, not a guideline.
@@ -42,9 +42,13 @@ jobs:
       - name: Install shellcheck
         run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
       - name: Lint POSIX sh
+        # router/ is included deliberately: the global and session-sync
+        # routers run on every Claude Code session on every machine, so an
+        # unlinted quoting bug there is the highest-blast-radius defect in
+        # the repo. They were missing from this list until 3.3.0.
         run: |
           set -eu
-          files="$(find bin hooks modules -type f \( -name 'ctk' -o -name '*.sh' \) 2>/dev/null || true)"
+          files="$(find bin hooks modules router tests -type f \( -name 'ctk' -o -name '*.sh' \) 2>/dev/null || true)"
           if [ -z "$files" ]; then echo "no shell files found"; exit 1; fi
           echo "$files"
           # shellcheck disable=SC2086
@@ -67,7 +71,7 @@ jobs:
           python - <<'PY'
           import pathlib, sys, yaml
           bad = []
-          roots = [".claude/commands", ".claude/agents", ".claude/skills", "modules"]
+          roots = [".claude/commands", ".claude/agents", ".claude/skills", "modules", "global-commands"]
           for root in roots:
               for p in pathlib.Path(root).rglob("*.md"):
                   text = p.read_text(encoding="utf-8")
@@ -94,15 +98,54 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Parse check
+      - name: Parse check every .ps1
+        # Every Windows-only defect so far (StrictMode, Save-Backup path
+        # separators, empty LiteralPath) reached a real machine because CI
+        # only ever parsed bin/ctk.ps1. This walks the whole tree instead.
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile(
-            (Resolve-Path ./bin/ctk.ps1), [ref]$null, [ref]$errors) | Out-Null
-          if ($errors -and $errors.Count -gt 0) { $errors | ForEach-Object { $_.ToString() }; exit 1 }
-          Write-Host 'ctk.ps1 parses cleanly'
+          $failed = $false
+          Get-ChildItem -Path . -Filter *.ps1 -Recurse -File | ForEach-Object {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors -and $errors.Count -gt 0) {
+              Write-Host "FAIL $($_.FullName)"
+              $errors | ForEach-Object { Write-Host "  $_" }
+              $failed = $true
+            } else {
+              Write-Host "OK   $($_.FullName)"
+            }
+          }
+          if ($failed) { exit 1 }
       - name: Token budget via PowerShell
         shell: pwsh
         run: ./bin/ctk.ps1 budget
+      - name: Test suite on Windows (bash)
+        # The POSIX suite drives bin/ctk, but running it here catches
+        # checkout-level breakage (line endings, path handling) on the one
+        # platform this toolkit is actually used on daily.
+        shell: bash
+        run: sh tests/run.sh
+      - name: Windows lifecycle smoke test (advisory)
+        # HANDOFF gap 1: the PowerShell staging/uninstall paths were only ever
+        # proven by hand on one machine. This exercises them on every push.
+        # Advisory for now: it is new, and a false red here must not block an
+        # otherwise-green build. Promote to required once it has run green.
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $proj = Join-Path $env:RUNNER_TEMP 'ctk-smoke'
+          New-Item -ItemType Directory -Force -Path $proj | Out-Null
+          Set-Content -LiteralPath (Join-Path $proj 'CLAUDE.md') -Value '# local rules' -NoNewline
+          ./bin/ctk.ps1 install --profile standard --target $proj --dry-run
+          ./bin/ctk.ps1 install --profile standard --target $proj --yes
+          ./bin/ctk.ps1 status --target $proj
+          ./bin/ctk.ps1 doctor --target $proj
+          ./bin/ctk.ps1 uninstall --target $proj --yes
+          $left = Get-Content -LiteralPath (Join-Path $proj 'CLAUDE.md') -Raw
+          if ($left -notmatch 'local rules') { Write-Host 'FAIL: user content lost'; exit 1 }
+          if ($left -match 'ctk:begin') { Write-Host 'FAIL: managed block survived uninstall'; exit 1 }
+          Write-Host 'Windows lifecycle smoke test passed'

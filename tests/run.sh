@@ -49,7 +49,7 @@ new_target() {
 test_fresh_install() {
     target=$(new_target fresh)
     "$CTK" install --target "$target" --yes >/dev/null
-    assert_file_contains "$target/CLAUDE.md" '<!-- ctk:begin v=3.2.0 profile=standard hash=' &&
+    assert_file_contains "$target/CLAUDE.md" '<!-- ctk:begin v=3.3.0 profile=standard hash=' &&
         assert_file_contains "$target/CLAUDE.md" '<!-- ctk:end -->'
 }
 
@@ -225,7 +225,7 @@ test_installed_manifest_is_accurate() {
     "$CTK" install --profile standard --target "$target" --yes >/dev/null
     manifest=$target/.claude/ctk/installed.txt
     [ "$(awk -F '\t' '$1 == "profile" { print $2 }' "$manifest")" = standard ] &&
-        [ "$(awk -F '\t' '$1 == "version" { print $2 }' "$manifest")" = 3.2.0 ] &&
+        [ "$(awk -F '\t' '$1 == "version" { print $2 }' "$manifest")" = 3.3.0 ] &&
         [ "$(awk -F '\t' '$1 == "schema" { print $2 }' "$manifest")" = 1 ] &&
         grep -F '.claude/commands/ctk/resume.md' "$manifest" >/dev/null &&
         grep -F 'hooks/session-start.sh' "$manifest" >/dev/null &&
@@ -426,6 +426,7 @@ test_global_command_files_have_correct_routing() {
     home=$(new_ctk_home boot-global-routing)
     CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
     router="$home/.claude/ctk/global-router.sh"
+    # shellcheck disable=SC2016 # asserting on literal router text; no expansion wanted
     grep -F 'registration.txt' "$router" >/dev/null &&
         grep -F 'powershell -NoProfile -ExecutionPolicy Bypass -File' "$router" >/dev/null &&
         grep -F 'sh "$ctk_script"' "$router" >/dev/null || return 1
@@ -482,6 +483,64 @@ test_global_update_doctor_resume_on_existing_apk_project() {
     grep -F 'CHANGED: updated managed block' "$project/update-output" >/dev/null || return 1
     CTK_HOME="$home" sh "$home/.claude/ctk/global-router.sh" state add "resumed via global command" --target "$project" --yes >/dev/null
     assert_file_contains "$project/.claude/ctk/STATE.md" 'resumed via global command'
+}
+
+# 3.3.0 regression set: global command files installed under $HOME are copies,
+# so a CTK checkout update used to leave them stale until bootstrap was re-run
+# by hand. That is what shipped a fixed template while the broken one still
+# ran. Session sync must refresh them, and must refuse to do so from a
+# checkout that is not the registered one.
+test_session_sync_refreshes_stale_global_commands() {
+    home=$(new_ctk_home sync-refresh-home)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    cmd_file=$home/.claude/commands/ctk/update.md
+    printf '%s\n' 'STALE CONTENT' > "$cmd_file"
+    target=$(new_target sync-refresh-project)
+    CTK_HOME="$home" "$CTK" install --target "$target" --yes >/dev/null
+    CTK_HOME="$home" "$CTK" update --session-sync --target "$target" --yes > "$target/output" 2>&1 || return 1
+    cmp -s "$ROOT_DIR/global-commands/update.md" "$cmd_file" &&
+        grep -F 'Refreshed 1 global command file' "$target/output" >/dev/null
+}
+
+test_session_sync_global_refresh_is_idempotent() {
+    home=$(new_ctk_home sync-refresh-idem-home)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    target=$(new_target sync-refresh-idem-project)
+    CTK_HOME="$home" "$CTK" install --target "$target" --yes >/dev/null
+    CTK_HOME="$home" "$CTK" update --session-sync --target "$target" --yes > "$target/output" 2>&1 || return 1
+    ! grep -F 'Refreshed' "$target/output" >/dev/null
+}
+
+test_session_sync_never_creates_global_commands() {
+    home=$(new_ctk_home sync-refresh-nocreate-home)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    rm -f "$home/.claude/commands/ctk/doctor.md"
+    target=$(new_target sync-refresh-nocreate-project)
+    CTK_HOME="$home" "$CTK" install --target "$target" --yes >/dev/null
+    CTK_HOME="$home" "$CTK" update --session-sync --target "$target" --yes >/dev/null 2>&1 || return 1
+    [ ! -e "$home/.claude/commands/ctk/doctor.md" ]
+}
+
+test_session_sync_refresh_ignores_unregistered_checkout() {
+    home=$(new_ctk_home sync-refresh-foreign-home)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    cmd_file=$home/.claude/commands/ctk/status.md
+    printf '%s\n' 'STALE CONTENT' > "$cmd_file"
+    # Point the registration at some other directory: this checkout is then
+    # not the registered one and must leave the machine's globals alone.
+    other=$(new_target sync-refresh-foreign-root)
+    sed "s|^root\t.*|root\t$other|" "$home/.claude/ctk/registration.txt" > "$home/.claude/ctk/registration.new"
+    mv "$home/.claude/ctk/registration.new" "$home/.claude/ctk/registration.txt"
+    target=$(new_target sync-refresh-foreign-project)
+    CTK_HOME="$home" "$CTK" install --target "$target" --yes >/dev/null
+    CTK_HOME="$home" "$CTK" update --session-sync --target "$target" --yes >/dev/null 2>&1 || return 1
+    grep -F 'STALE CONTENT' "$cmd_file" >/dev/null
+}
+
+test_repo_pins_lf_line_endings() {
+    # A CRLF checkout of these files broke 4 tests on the primary Windows
+    # machine while CI stayed green. .gitattributes is the fix.
+    assert_file_contains "$ROOT_DIR/.gitattributes" 'eol=lf'
 }
 
 test_session_sync_current_project_no_write() {
@@ -642,6 +701,11 @@ run_test test_global_commands_do_not_load_full_core_by_default
 run_test test_global_install_works_before_project_ctk_files_exist
 run_test test_global_update_doctor_resume_on_existing_apk_project
 run_test test_session_sync_current_project_no_write
+run_test test_session_sync_refreshes_stale_global_commands
+run_test test_session_sync_global_refresh_is_idempotent
+run_test test_session_sync_never_creates_global_commands
+run_test test_session_sync_refresh_ignores_unregistered_checkout
+run_test test_repo_pins_lf_line_endings
 run_test test_session_sync_first_install_needs_approval
 run_test test_session_sync_orphaned_markers_fail_closed
 run_test test_session_sync_missing_manifest_fails_closed

@@ -9,6 +9,59 @@ Versioning policy for this toolkit specifically:
 - **minor**: new commands, agents, skills, modules, or CLI capability
 - **major**: a change to the core operating rules or to the installer contract
 
+## [3.3.0] - 2026-08-09
+
+Polish and hardening pass. One real bug (stale global slash commands), and the
+CI gaps that let a series of Windows-only defects reach a real machine instead
+of a build. No change to the core operating rules or the installer contract.
+
+### Fixed
+
+- **Global slash commands went stale after a checkout update.** `ctk bootstrap`
+  copies `global-commands/*.md` and `router/global-router.sh` into
+  `~/.claude/`, so pulling a new CTK commit left the *old* copies running.
+  That is exactly how a fixed `/ctk:update` template sat in the checkout while
+  the broken one kept failing on a real machine. `ctk update --session-sync`
+  (the automatic session-start path) now refreshes any CTK-owned global file
+  that has drifted from its source, backs up what it replaces, and reports one
+  extra clause such as `Refreshed 1 global command file(s); restart Claude Code
+  once to load them.` It refreshes only files that already exist — `bootstrap`
+  still owns first installation and `disable` stays final — and it refuses to
+  act unless the running checkout is the registered one, so a second clone can
+  never rewrite the machine's globals behind the registered checkout's back.
+- **CRLF checkouts broke the test suite on Windows.** The repo had no
+  `.gitattributes`, so a Windows checkout with `core.autocrlf=true` rewrote
+  shell scripts and hash-compared fixtures, failing 4 tests on the primary
+  development machine while CI stayed green. Line endings are now pinned to LF
+  in the working tree on every platform.
+- **`router/` was never linted.** CI's `shellcheck` step searched only
+  `bin hooks modules`, which excluded the two scripts that run on every Claude
+  Code session on every machine — the highest blast radius in the repo. It now
+  covers `bin hooks modules router tests`.
+
+### Added
+
+- **Windows CI coverage that matches how the toolkit is actually used.** The
+  `windows-latest` job now parse-checks *every* `.ps1` in the tree (not just
+  `bin/ctk.ps1`), runs the full test suite under Git Bash, and runs an advisory
+  end-to-end PowerShell lifecycle smoke test (`install --dry-run`, `install`,
+  `status`, `doctor`, `uninstall`) that asserts user content survives byte for
+  byte. Every Windows-only defect to date — the `StrictMode` failure, the
+  `Save-Backup` path-separator bug, the empty `LiteralPath` crash — was caught
+  by hand on one machine and never by a build; this closes that.
+- Frontmatter validation now also covers `global-commands/`, which ships
+  user-visible slash commands and was previously unchecked.
+- Five regression tests for the refresh path (drift is repaired, repeat runs
+  are silent, missing files are never created, an unregistered checkout is
+  ignored) plus one asserting the LF pin. 53 tests total, all passing.
+
+### Changed
+
+- `README.md` and `CONTRIBUTING.md` lint examples now include `router/*.sh` and
+  `tests/run.sh`, matching CI.
+- `HANDOFF.md` rewritten: it still described the 3.0.0 state, three feature
+  releases later.
+
 ## [3.2.0] - 2026-08-08
 
 Corrective follow-up to 3.1.0: closes the gap between updating the CTK

@@ -110,10 +110,26 @@ given session, since both ultimately call the same `ctk` CLI.
    silently, except for one line such as:
 
    ```text
-   CTK: updated to 3.2.0 (standard profile); project state healthy.
+   CTK: updated to 3.3.0 (standard profile); project state healthy.
    ```
 
    If nothing changed, the line is `CTK: current (...)` and nothing is written.
+
+The same session-start check also keeps the *global* `/ctk:*` command files in
+`~/.claude/commands/ctk/` in step with the checkout. Those files are copies
+made by `bootstrap`, so before 3.3.0 a `git pull` in the CTK checkout left the
+previous copies running and a fixed command could still fail. Sync now
+replaces any CTK-owned global file that has drifted (backing up what it
+replaces) and adds one clause to its status line:
+
+```text
+CTK: current (3.3.0, full profile). Refreshed 1 global command file(s); restart Claude Code once to load them.
+```
+
+It only refreshes files that already exist, and only when the checkout being
+run is the registered one — `bootstrap` remains the only thing that creates
+them and `disable` remains final. Re-running `bootstrap` after every checkout
+update is therefore no longer necessary.
 
 No terminal command, no `PATH` edit, no file editing. `.claude/ctk/STATE.md`
 (and anything else `ctk state`/`ctk goal` manage) is preserved through every

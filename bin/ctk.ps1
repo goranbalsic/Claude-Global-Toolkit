@@ -11,7 +11,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Version = '3.2.0'
+$Version = '3.3.0'
 $CoreLimit = 1200
 $StateLimit = 400
 $GoalLimit = 300
@@ -337,16 +337,62 @@ function Test-SessionSyncConflict {
 # router. Reuses Get-BlockState/New-Block/Save-Backup/Stage-SelectedProfile
 # unchanged; the only new behavior is the conflict pre-flight and the
 # machine-readable exit codes a router can act on without a console prompt.
+# Global slash-command files are *copies* placed under $HOME\.claude by
+# bootstrap, so updating the CTK checkout alone used to leave them stale --
+# the exact failure mode behind the "--target requires a non-empty directory"
+# crash, where a fixed template sat in the checkout while the old one still
+# ran. Session sync refreshes CTK-owned global files in place whenever this
+# checkout is the registered root and a file has drifted. Refresh only, never
+# create: bootstrap still owns first installation and disable stays final.
+$script:GlobalRefreshCount = 0
+function Update-GlobalCommandsQuiet {
+    $script:GlobalRefreshCount = 0
+    $base = if ($env:CTK_HOME) { $env:CTK_HOME } else { $HOME }
+    if ([string]::IsNullOrWhiteSpace($base)) { return }
+    $ctkHome = Join-Path $base '.claude'
+    $regFile = Join-Path $ctkHome 'ctk\registration.txt'
+    if (-not (Test-Path -LiteralPath $regFile -PathType Leaf)) { return }
+    $regRoot = $null
+    foreach ($line in Get-Content -LiteralPath $regFile) {
+        $parts = $line -split "`t", 2
+        if ($parts.Count -eq 2 -and $parts[0] -eq 'root') { $regRoot = $parts[1]; break }
+    }
+    if ([string]::IsNullOrWhiteSpace($regRoot)) { return }
+    # A checkout that is not the registered one must never rewrite the
+    # machine's global commands behind the registered checkout's back.
+    if (-not [string]::Equals(($regRoot.TrimEnd('\', '/')), ($RootDir.TrimEnd('\', '/')), [StringComparison]::OrdinalIgnoreCase)) { return }
+    $pairs = @(@{ src = 'router\global-router.sh'; dst = 'ctk\global-router.sh' })
+    foreach ($name in $GlobalCommandNames) {
+        $pairs += @{ src = "global-commands\$name.md"; dst = "commands\ctk\$name.md" }
+    }
+    foreach ($pair in $pairs) {
+        $src = Join-Path $RootDir $pair.src
+        $dst = Join-Path $ctkHome $pair.dst
+        if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { continue }
+        if (-not (Test-Path -LiteralPath $dst -PathType Leaf)) { continue }
+        if ((Get-FileSha256 $src) -eq (Get-FileSha256 $dst)) { continue }
+        try {
+            Save-HomeBackup $dst $ctkHome | Out-Null
+            Copy-Item -LiteralPath $src -Destination $dst -Force
+            $script:GlobalRefreshCount++
+        } catch { continue }
+    }
+}
+function Get-GlobalRefreshNote {
+    if ($script:GlobalRefreshCount -gt 0) { return " Refreshed $($script:GlobalRefreshCount) global command file(s); restart Claude Code once to load them." }
+    return ''
+}
 function Invoke-SessionSync {
+    Update-GlobalCommandsQuiet
     Ensure-WriteTarget
     $state = Get-BlockState
-    if ($state -eq 'absent') { Write-Output 'CTK: no managed block present; first install requires approval.'; exit 10 }
+    if ($state -eq 'absent') { Write-Output "CTK: no managed block present; first install requires approval.$(Get-GlobalRefreshNote)"; exit 10 }
     if ($state -eq 'orphan') { Write-Output "CTK: orphaned ctk markers in $(Get-TargetFile); run 'ctk doctor', then resolve manually."; exit 12 }
     Choose-ExistingSettings
     if (-not (Test-Path -LiteralPath (Get-InstalledFile) -PathType Leaf)) { Write-Output "CTK: managed block present with no install manifest; run 'ctk doctor' then 'ctk update --yes' manually once to establish one."; exit 12 }
     $conflict = Test-SessionSyncConflict
     if ($null -ne $conflict) { Write-Output "CTK: locally modified managed file detected ($conflict); sync skipped, nothing overwritten."; exit 11 }
-    if ((Get-HeaderValue 'hash') -eq (Get-CoreHash) -and (Get-InstalledVersion) -eq $Version) { Write-Output "CTK: current ($Version, $(Get-InstalledProfile) profile)."; exit 0 }
+    if ((Get-HeaderValue 'hash') -eq (Get-CoreHash) -and (Get-InstalledVersion) -eq $Version) { Write-Output "CTK: current ($Version, $(Get-InstalledProfile) profile).$(Get-GlobalRefreshNote)"; exit 0 }
     $file = Get-TargetFile
     $existingSep = (Get-HeaderValue 'sep') -eq '1'
     $backup = Save-Backup $file
@@ -358,7 +404,7 @@ function Invoke-SessionSync {
     Invoke-BudgetReport | Out-Null
     if (-not $BudgetPassed) { $healthOk = $false }
     if (-not $healthOk) { Write-Output "CTK: sync applied but health check failed; backup at $backup. Run 'ctk doctor' to inspect."; exit 14 }
-    Write-Output "CTK: updated to $Version ($(Get-InstalledProfile) profile); project state healthy."
+    Write-Output "CTK: updated to $Version ($(Get-InstalledProfile) profile); project state healthy.$(Get-GlobalRefreshNote)"
     exit 0
 }
 function Remove-EmptyParents([string]$Path) { $parent = Split-Path -Parent $Path; while ($parent -and -not [string]::Equals($parent, $TargetDir, [StringComparison]::OrdinalIgnoreCase)) { try { Remove-Item -LiteralPath $parent -Force -ErrorAction Stop } catch { break }; $parent = Split-Path -Parent $parent } }

@@ -232,7 +232,7 @@ manages a delimited block and leaves everything outside it untouched:
 # My project's own instructions
 Deploy only from main. Never touch the migrations directory without review.
 
-<!-- ctk:begin v=3.2.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
+<!-- ctk:begin v=3.3.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
 @/home/you/Claude-Global-Toolkit/core/CLAUDE.core.md
 <!-- ctk:end -->
 ```
@@ -463,7 +463,7 @@ budget is the one that gets enforced automatically. Before opening a pull reques
 ```sh
 sh tests/run.sh
 bin/ctk budget
-shellcheck -s sh bin/ctk hooks/*.sh modules/*/scripts/*.sh
+shellcheck -s sh bin/ctk tests/run.sh hooks/*.sh modules/*/scripts/*.sh router/*.sh
 ```
 
 ## License

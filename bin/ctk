@@ -2,7 +2,7 @@
 # ctk keeps its managed region narrow so local instructions remain authoritative.
 set -eu
 
-VERSION=3.2.0
+VERSION=3.3.0
 CORE_LIMIT=1200
 STATE_LIMIT=400
 GOAL_LIMIT=300
@@ -708,11 +708,53 @@ session_sync_conflict_check() {
 # router. Reuses block_state/render_block/backup_target/stage_selected_profile
 # unchanged; the only new behavior is the conflict pre-flight and the
 # machine-readable exit codes a router can act on without a TTY.
+# Global slash-command files are *copies* placed under $HOME/.claude by
+# bootstrap, so updating the CTK checkout alone used to leave them stale --
+# the exact failure mode behind the "--target requires a non-empty directory"
+# crash, where a fixed template sat in the checkout while the old one still
+# ran. Session sync therefore refreshes CTK-owned global files in place
+# whenever this checkout is the registered root and a file has drifted.
+# Refresh only, never create: bootstrap still owns first installation and
+# `disable` stays final.
+GLOBAL_REFRESH_COUNT=0
+refresh_global_commands_quiet() {
+    GLOBAL_REFRESH_COUNT=0
+    refresh_home=${CTK_HOME:-${HOME:-}}
+    [ -n "$refresh_home" ] || return 0
+    refresh_ctk_home=$refresh_home/.claude
+    refresh_reg=$refresh_ctk_home/ctk/registration.txt
+    [ -f "$refresh_reg" ] || return 0
+    refresh_root=$(awk -F '\t' '$1 == "root" { print $2; exit }' "$refresh_reg" 2>/dev/null || true)
+    # A checkout that is not the registered one must never rewrite the
+    # machine's global commands behind the registered checkout's back.
+    [ "$refresh_root" = "$ROOT_DIR" ] || return 0
+    refresh_pairs="router/global-router.sh|ctk/global-router.sh"
+    for refresh_name in $GLOBAL_COMMAND_NAMES; do
+        refresh_pairs="$refresh_pairs global-commands/$refresh_name.md|commands/ctk/$refresh_name.md"
+    done
+    for refresh_pair in $refresh_pairs; do
+        refresh_src=$ROOT_DIR/${refresh_pair%%|*}
+        refresh_dst=$refresh_ctk_home/${refresh_pair#*|}
+        [ -f "$refresh_src" ] || continue
+        [ -f "$refresh_dst" ] || continue
+        if cmp -s "$refresh_src" "$refresh_dst"; then continue; fi
+        backup_home_file "$refresh_dst" "$refresh_ctk_home" >/dev/null 2>&1 || continue
+        cp "$refresh_src" "$refresh_dst" 2>/dev/null || continue
+        GLOBAL_REFRESH_COUNT=$((GLOBAL_REFRESH_COUNT + 1))
+    done
+}
+
+global_refresh_note() {
+    [ "${GLOBAL_REFRESH_COUNT:-0}" -gt 0 ] || return 0
+    printf ' Refreshed %s global command file(s); restart Claude Code once to load them.' "$GLOBAL_REFRESH_COUNT"
+}
+
 session_sync_cmd() {
+    refresh_global_commands_quiet
     ensure_target_for_write
     state=$(block_state)
     if [ "$state" = absent ]; then
-        printf '%s\n' 'CTK: no managed block present; first install requires approval.'
+        printf '%s\n' "CTK: no managed block present; first install requires approval.$(global_refresh_note)"
         exit 10
     fi
     if [ "$state" = orphan ]; then
@@ -729,7 +771,7 @@ session_sync_cmd() {
         exit 11
     }
     if [ "$(header_value hash)" = "$(core_hash12)" ] && [ "$(installed_version)" = "$VERSION" ]; then
-        printf '%s\n' "CTK: current ($VERSION, $(installed_profile) profile)."
+        printf '%s\n' "CTK: current ($VERSION, $(installed_profile) profile).$(global_refresh_note)"
         exit 0
     fi
     backup=$(backup_target "$TARGET_FILE")
@@ -747,7 +789,7 @@ session_sync_cmd() {
         printf '%s\n' "CTK: sync applied but health check failed; backup at $backup. Run 'ctk doctor' to inspect."
         exit 14
     fi
-    printf '%s\n' "CTK: updated to $VERSION ($(installed_profile) profile); project state healthy."
+    printf '%s\n' "CTK: updated to $VERSION ($(installed_profile) profile); project state healthy.$(global_refresh_note)"
     exit 0
 }
 

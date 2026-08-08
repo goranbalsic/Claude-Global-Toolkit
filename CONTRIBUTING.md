@@ -29,7 +29,7 @@ below are the ones that keep the toolkit useful.
 ```sh
 sh tests/run.sh                       # must pass
 bin/ctk budget                        # must pass
-shellcheck -s sh bin/ctk hooks/*.sh modules/*/scripts/*.sh
+shellcheck -s sh bin/ctk tests/run.sh hooks/*.sh modules/*/scripts/*.sh router/*.sh
 python3 -m json.tool .claude/settings.json >/dev/null
 ```
 

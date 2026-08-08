@@ -11,11 +11,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Version = '3.1.0'
+$Version = '3.2.0'
 $CoreLimit = 1200
 $StateLimit = 400
 $GoalLimit = 300
 $ManifestSchema = 1
+$BootstrapSchema = 1
 $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $CoreFile = Join-Path $RootDir 'core\CLAUDE.core.md'
 $TargetDir = (Get-Location).Path
@@ -28,6 +29,9 @@ $Profile = 'standard'
 $ProfileSet = $false
 $ModulesDisabled = $false
 $RequestedModules = New-Object System.Collections.Generic.List[string]
+$SessionSync = $false
+$BootstrapRoot = $null
+$AutoApply = $false
 $StateAction = $null
 $StateText = $null
 $GoalAction = $null
@@ -56,6 +60,8 @@ Commands:
   budget        Measure the always-loaded core and bounded state.
   state         state show | state add "text" | state rotate
   goal          goal set|show|pause|complete|cancel|clear
+  bootstrap     Register this checkout and a global SessionStart router, once per machine.
+  disable       Remove the registration and router installed by bootstrap.
   version       Print the toolkit version.
   help          Print this help.
 
@@ -69,11 +75,21 @@ Options:
   --target DIR              Target directory (default: current directory).
   --dry-run                 Describe a mutating operation without writing.
   --yes                     Do not prompt before a mutation.
+  --session-sync            update: non-interactive safe sync, fails closed on conflict.
+  --root DIR                bootstrap: register DIR instead of this script's own checkout.
+  --auto-apply              bootstrap: record auto_apply_managed_ctk=true (opt-in).
   --objective TEXT          goal set: the objective (required).
   --acceptance TEXT         goal set: the acceptance check (required).
   --phase TEXT              goal set/pause: the current phase.
   --next TEXT               goal set: the next verifiable action.
   --evidence TEXT           goal complete: the test/build evidence (required).
+
+Exit codes for 'update --session-sync':
+  0  current, or safe synchronization completed
+  10 first install needs in-chat approval; no write performed
+  11 locally modified managed content; no write performed
+  12 unknown/legacy/ambiguous state; no write performed
+  14 post-sync health check failed; backup preserved
 '@ | Write-Output
 }
 
@@ -85,11 +101,6 @@ function Get-GoalFile { Join-Path $script:TargetDir '.claude\ctk\GOAL.md' }
 function Require-Core { if (-not (Test-Path -LiteralPath $CoreFile -PathType Leaf)) { Fail "core file is missing: $CoreFile" } }
 function Get-FileSha256([string]$Path) { (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
 function Get-CoreHash { Require-Core; (Get-FileSha256 $CoreFile).Substring(0, 12) }
-function Get-StateHash {
-    $bytes = [Text.UTF8Encoding]::new($false).GetBytes("# ctk bounded session state$([Environment]::NewLine)")
-    $sha = [Security.Cryptography.SHA256]::Create()
-    try { ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant() } finally { $sha.Dispose() }
-}
 function Test-Profile {
     if ($Profile -notin @('minimal', 'standard', 'full')) { Fail "invalid profile: $Profile (expected minimal, standard, or full)" }
     if (-not (Test-Path -LiteralPath (Join-Path $RootDir ("core\profiles\{0}.txt" -f $Profile)) -PathType Leaf)) { Fail "profile manifest is missing: $Profile" }
@@ -216,20 +227,22 @@ function Stage-File([string]$Source, [string]$RelativeDestination) {
     }
 }
 function Stage-StateFile {
-    $relative = '.claude/ctk/STATE.md'; $destination = Get-StateFile; $hash = Get-StateHash
-    $identical = (Test-Path -LiteralPath $destination -PathType Leaf) -and ((Get-FileSha256 $destination) -eq $hash)
-    if ($identical) { if ($DryRun) { Write-Output "DRY-RUN: SKIP: identical staged file: $relative" } else { $StageRecords[$relative] = $hash; Write-Output "SKIP: identical staged file: $relative" }; return }
+    # STATE.md is live data `ctk goal`/`state add` own, not a template to
+    # reset: once it exists at all, install/update must never overwrite it,
+    # only record whatever it currently contains. Comparing it against the
+    # pristine boilerplate hash here previously meant any accumulated
+    # checkpoint history was silently wiped back to empty on every update.
+    $relative = '.claude/ctk/STATE.md'; $destination = Get-StateFile
     if (Test-Path -LiteralPath $destination) {
         if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) { Fail "cannot stage state over non-file: $destination" }
-        if ($DryRun) { Write-Output "DRY-RUN: BACKUP: $relative -> .ctk-backup/$relative.<timestamp>"; Write-Output "DRY-RUN: STAGE: @state -> $relative"; return }
-        $backup = Save-Backup $destination
-        [IO.File]::WriteAllText($destination, "# ctk bounded session state$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
-        $StageRecords[$relative] = $hash; Write-Output "CHANGED: staged $relative (backup: $backup)"
+        $StageRecords[$relative] = Get-FileSha256 $destination
+        if ($DryRun) { Write-Output "DRY-RUN: SKIP: state file already present: $relative" } else { Write-Output "SKIP: state file already present: $relative" }
+        return
     } else {
         if ($DryRun) { Write-Output "DRY-RUN: STAGE: @state -> $relative"; return }
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
         [IO.File]::WriteAllText($destination, "# ctk bounded session state$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
-        $StageRecords[$relative] = $hash; Write-Output "CHANGED: staged $relative"
+        $StageRecords[$relative] = Get-FileSha256 $destination; Write-Output "CHANGED: staged $relative"
     }
 }
 function Stage-Directory([string]$SourceDirectory, [string]$DestinationDirectory) {
@@ -303,6 +316,51 @@ function Invoke-Update {
     if ($DryRun) { Write-Output "DRY-RUN: update managed block in $file"; Stage-SelectedProfile; return }
     Confirm-Mutation "Update managed block in ${file}?"; $backup = Save-Backup $file; $old = [IO.File]::ReadAllText($file); $new = [regex]::Replace($old, '(?ms)^<!-- ctk:begin v=.*?^<!-- ctk:end -->\r?\n?', (New-Block $existingSep), 1); Write-TargetText $new; Write-Output "CHANGED: updated managed block in $file (backup: $backup)"; Stage-SelectedProfile
 }
+# Reused by Invoke-SessionSync only: mirrors Test-InstalledAssets' hash check
+# but stops and reports the first mismatch, since sync must fail closed before
+# writing anything rather than enumerate every drift.
+function Test-SessionSyncConflict {
+    $installed = Get-InstalledFile
+    foreach ($line in Get-Content -LiteralPath $installed) {
+        $parts = $line -split "`t", 2
+        if ($parts.Count -ne 2 -or $parts[0] -in @('version', 'profile', 'schema') -or $parts[0].StartsWith('#')) { continue }
+        $path = $parts[0]; $hash = $parts[1]
+        if ($path -eq '.claude/ctk/STATE.md') { continue }
+        if (-not (Test-SafeRelative $path)) { return $path }
+        $target = Join-Path $TargetDir $path
+        if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { continue }
+        if ((Get-FileSha256 $target) -ne $hash) { return $path }
+    }
+    return $null
+}
+# Non-interactive counterpart to Invoke-Update for an automated SessionStart
+# router. Reuses Get-BlockState/New-Block/Save-Backup/Stage-SelectedProfile
+# unchanged; the only new behavior is the conflict pre-flight and the
+# machine-readable exit codes a router can act on without a console prompt.
+function Invoke-SessionSync {
+    Ensure-WriteTarget
+    $state = Get-BlockState
+    if ($state -eq 'absent') { Write-Output 'CTK: no managed block present; first install requires approval.'; exit 10 }
+    if ($state -eq 'orphan') { Write-Output "CTK: orphaned ctk markers in $(Get-TargetFile); run 'ctk doctor', then resolve manually."; exit 12 }
+    Choose-ExistingSettings
+    if (-not (Test-Path -LiteralPath (Get-InstalledFile) -PathType Leaf)) { Write-Output "CTK: managed block present with no install manifest; run 'ctk doctor' then 'ctk update --yes' manually once to establish one."; exit 12 }
+    $conflict = Test-SessionSyncConflict
+    if ($null -ne $conflict) { Write-Output "CTK: locally modified managed file detected ($conflict); sync skipped, nothing overwritten."; exit 11 }
+    if ((Get-HeaderValue 'hash') -eq (Get-CoreHash) -and (Get-InstalledVersion) -eq $Version) { Write-Output "CTK: current ($Version, $(Get-InstalledProfile) profile)."; exit 0 }
+    $file = Get-TargetFile
+    $existingSep = (Get-HeaderValue 'sep') -eq '1'
+    $backup = Save-Backup $file
+    $old = [IO.File]::ReadAllText($file)
+    $new = [regex]::Replace($old, '(?ms)^<!-- ctk:begin v=.*?^<!-- ctk:end -->\r?\n?', (New-Block $existingSep), 1)
+    Write-TargetText $new
+    Stage-SelectedProfile
+    $healthOk = ((Get-HeaderValue 'hash') -eq (Get-CoreHash))
+    Invoke-BudgetReport | Out-Null
+    if (-not $BudgetPassed) { $healthOk = $false }
+    if (-not $healthOk) { Write-Output "CTK: sync applied but health check failed; backup at $backup. Run 'ctk doctor' to inspect."; exit 14 }
+    Write-Output "CTK: updated to $Version ($(Get-InstalledProfile) profile); project state healthy."
+    exit 0
+}
 function Remove-EmptyParents([string]$Path) { $parent = Split-Path -Parent $Path; while ($parent -and -not [string]::Equals($parent, $TargetDir, [StringComparison]::OrdinalIgnoreCase)) { try { Remove-Item -LiteralPath $parent -Force -ErrorAction Stop } catch { break }; $parent = Split-Path -Parent $parent } }
 function Invoke-UninstallStagedAssets {
     $installed = Get-InstalledFile; if (-not (Test-Path -LiteralPath $installed -PathType Leaf)) { return }
@@ -349,13 +407,14 @@ function Invoke-BudgetReport {
     Write-Output "$coreLabel`: core $CoreFile`: $coreBytes bytes, $coreTokens estimated tokens (limit: $CoreLimit)"; if (Test-Path -LiteralPath $stateFile) { Write-Output "$stateLabel`: state $stateFile`: $stateBytes bytes, $stateTokens estimated tokens (limit: $StateLimit)" } else { Write-Output "$stateLabel`: state $stateFile`: absent, 0 bytes, 0 estimated tokens (limit: $StateLimit)" }; $totalLabel = if ($failed) { 'FAIL' } else { 'PASS' }; Write-Output "$totalLabel`: total always-loaded surface: $($coreBytes + $stateBytes) bytes, $($coreTokens + $stateTokens) estimated tokens"; $script:BudgetPassed = -not $failed
 }
 function Get-InstalledProfile { $file = Get-InstalledFile; if (Test-Path -LiteralPath $file) { foreach ($line in Get-Content -LiteralPath $file) { if ($line.StartsWith("profile`t")) { return $line.Substring(8) } } }; return '' }
+function Get-InstalledVersion { $file = Get-InstalledFile; if (Test-Path -LiteralPath $file) { foreach ($line in Get-Content -LiteralPath $file) { if ($line.StartsWith("version`t")) { return $line.Substring(8) } } }; return '' }
 function Get-InstalledSchema { $file = Get-InstalledFile; if (Test-Path -LiteralPath $file) { foreach ($line in Get-Content -LiteralPath $file) { if ($line.StartsWith("schema`t")) { return $line.Substring(7) } } }; return '' }
 function Get-InstalledCount { $file = Get-InstalledFile; if (-not (Test-Path -LiteralPath $file)) { return 0 }; $count = 0; foreach ($line in Get-Content -LiteralPath $file) { $parts = $line -split "`t", 2; if ($parts.Count -eq 2 -and $parts[0] -notin @('version', 'profile', 'schema') -and -not $parts[0].StartsWith('#')) { $count++ } }; return $count }
 function Test-InstalledAssets {
     $file = Get-InstalledFile; if (-not (Test-Path -LiteralPath $file)) { Write-Output 'PASS: no staged assets are recorded'; $script:InstalledAssetsPassed = $true; return }; $failed = $false
     if (-not (Get-InstalledSchema)) { Write-Output "WARN: installed manifest predates schema versioning (run 'ctk update' to migrate)" }
     foreach ($line in Get-Content -LiteralPath $file) { $parts = $line -split "`t", 2; if ($parts.Count -ne 2 -or $parts[0] -in @('version', 'profile', 'schema') -or $parts[0].StartsWith('#')) { continue }; $path = $parts[0]; $hash = $parts[1]
-        if (-not (Test-SafeRelative $path)) { Write-Output "FAIL: unsafe staged path in installed manifest: $path"; $failed = $true } elseif (-not (Test-Path -LiteralPath (Join-Path $TargetDir $path) -PathType Leaf)) { Write-Output "FAIL: staged asset is missing: $path"; $failed = $true } elseif ((Get-FileSha256 (Join-Path $TargetDir $path)) -eq $hash) { Write-Output "PASS: staged asset matches: $path" } else { Write-Output "FAIL: staged asset was locally modified: $path"; $failed = $true }
+        if (-not (Test-SafeRelative $path)) { Write-Output "FAIL: unsafe staged path in installed manifest: $path"; $failed = $true } elseif (-not (Test-Path -LiteralPath (Join-Path $TargetDir $path) -PathType Leaf)) { Write-Output "FAIL: staged asset is missing: $path"; $failed = $true } elseif ($path -eq '.claude/ctk/STATE.md') { Write-Output "PASS: state file present: $path" } elseif ((Get-FileSha256 (Join-Path $TargetDir $path)) -eq $hash) { Write-Output "PASS: staged asset matches: $path" } else { Write-Output "FAIL: staged asset was locally modified: $path"; $failed = $true }
     }; $script:InstalledAssetsPassed = -not $failed
 }
 function Invoke-Doctor {
@@ -428,10 +487,150 @@ function Invoke-Goal {
     }
 }
 
+# --- machine-level bootstrap/disable (registers a global SessionStart router; ---
+# --- never writes to a project directory, never uses TargetDir/--target).    ---
+function Get-CtkHomeDir {
+    $base = if ($env:CTK_HOME) { $env:CTK_HOME } else { $HOME }
+    if ([string]::IsNullOrWhiteSpace($base)) { Fail 'HOME is not set; set an env:CTK_HOME override or a user profile' }
+    return (Join-Path $base '.claude')
+}
+# A tiny home-scoped counterpart to Save-Backup, which is hard-wired to
+# TargetDir. Bootstrap/disable touch $HOME/.claude, not a project, so they get
+# their own timestamped backup under the same directory they mutate.
+function Save-HomeBackup([string]$Source, [string]$HomeRoot) {
+    $backupDir = Join-Path $HomeRoot '.ctk-backup'
+    New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+    $name = Split-Path -Leaf $Source
+    $backup = Join-Path $backupDir ($name + '.' + [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'))
+    $n = 1
+    while (Test-Path -LiteralPath $backup) { $backup = Join-Path $backupDir ($name + '.' + [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ') + '-' + $n); $n++ }
+    Copy-Item -LiteralPath $Source -Destination $backup
+    return $backup
+}
+function Test-CtkRoot([string]$Candidate) {
+    if (-not (Test-Path -LiteralPath (Join-Path $Candidate 'bin\ctk.ps1') -PathType Leaf)) { Fail "not a CTK checkout (missing bin\ctk.ps1): $Candidate" }
+    if (-not (Test-Path -LiteralPath (Join-Path $Candidate 'core\CLAUDE.core.md') -PathType Leaf)) { Fail "not a CTK checkout (missing core\CLAUDE.core.md): $Candidate" }
+    $router = Join-Path $Candidate 'router\session-sync-router.ps1'
+    if (-not (Test-Path -LiteralPath $router -PathType Leaf)) { Fail "CTK checkout is missing the session-sync router: $router" }
+}
+# Set-StrictMode -Version Latest throws on member-enumeration (bare `.Name`)
+# over a collection that turns out to be empty, and on accessing a property
+# that a dynamically-parsed PSCustomObject (arbitrary user JSON) may not have.
+# These two helpers are the strict-mode-safe replacement for both patterns;
+# every property access below on parsed JSON goes through them.
+function Test-HasProperty($Obj, [string]$Name) {
+    if ($null -eq $Obj) { return $false }
+    return [bool]($Obj.PSObject.Properties | Where-Object { $_.Name -eq $Name })
+}
+function Get-PropertyOrDefault($Obj, [string]$Name, $Default) {
+    if (Test-HasProperty $Obj $Name) { return $Obj.$Name }
+    return $Default
+}
+# PowerShell 5.1+ ships ConvertFrom-Json/ConvertTo-Json, so unlike the POSIX
+# CLI (which only has jq optionally), settings.json can always be parsed and
+# rewritten safely here rather than needing a jq-or-fail-safe fallback.
+function Get-SettingsObject([string]$Path) {
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        $raw = [IO.File]::ReadAllText($Path)
+        if ([string]::IsNullOrWhiteSpace($raw)) { return [PSCustomObject]@{} }
+        try { return ($raw | ConvertFrom-Json) } catch { Fail "existing settings file is not valid JSON: $Path" }
+    }
+    return [PSCustomObject]@{}
+}
+function Save-SettingsObject([string]$Path, $Object) {
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Path) | Out-Null
+    # -Depth 20: the default depth of 2 silently truncates nested hook
+    # structures, which would corrupt anything but the simplest settings file.
+    $json = $Object | ConvertTo-Json -Depth 20
+    [IO.File]::WriteAllText($Path, $json, [Text.UTF8Encoding]::new($false))
+}
+function Test-SessionStartEntryMatchesRouter($Entry) {
+    $entryHooks = Get-PropertyOrDefault $Entry 'hooks' @()
+    return [bool](@($entryHooks) | Where-Object { (Get-PropertyOrDefault $_ 'command' '') -like '*session-sync-router*' })
+}
+function Merge-SettingsHook([string]$SettingsFile, [string]$CommandStr) {
+    $settings = Get-SettingsObject $SettingsFile
+    if (-not (Test-HasProperty $settings 'hooks')) { $settings | Add-Member -NotePropertyName hooks -NotePropertyValue ([PSCustomObject]@{}) }
+    $hooks = $settings.hooks
+    $existingStart = Get-PropertyOrDefault $hooks 'SessionStart' @()
+    $filtered = @($existingStart) | Where-Object { -not (Test-SessionStartEntryMatchesRouter $_) }
+    $newEntry = [PSCustomObject]@{ hooks = @([PSCustomObject]@{ type = 'command'; command = $CommandStr }) }
+    $merged = @($filtered) + @($newEntry)
+    if (Test-HasProperty $hooks 'SessionStart') { $hooks.SessionStart = $merged } else { $hooks | Add-Member -NotePropertyName SessionStart -NotePropertyValue $merged }
+    Save-SettingsObject $SettingsFile $settings
+}
+function Remove-SettingsHook([string]$SettingsFile) {
+    if (-not (Test-Path -LiteralPath $SettingsFile -PathType Leaf)) { return }
+    $settings = Get-SettingsObject $SettingsFile
+    if (-not (Test-HasProperty $settings 'hooks')) { return }
+    $hooks = $settings.hooks
+    if (-not (Test-HasProperty $hooks 'SessionStart')) { return }
+    # The @() around the whole pipeline is required, not decorative: a
+    # Where-Object result with exactly one match unwraps to a bare object,
+    # and ConvertTo-Json would then serialize SessionStart as an object
+    # instead of a single-element array, silently changing its JSON shape.
+    $hooks.SessionStart = @(@($hooks.SessionStart) | Where-Object { -not (Test-SessionStartEntryMatchesRouter $_) })
+    Save-SettingsObject $SettingsFile $settings
+}
+function Invoke-Bootstrap {
+    $bootRoot = if ($BootstrapRoot) { $BootstrapRoot } else { $RootDir }
+    if (-not (Test-Path -LiteralPath $bootRoot -PathType Container)) { Fail "--root is not a directory: $bootRoot" }
+    $bootRoot = (Resolve-Path -LiteralPath $bootRoot).Path
+    Test-CtkRoot $bootRoot
+    $routerScript = Join-Path $bootRoot 'router\session-sync-router.ps1'
+    $routerCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$routerScript`""
+    $ctkHome = Get-CtkHomeDir
+    $regFile = Join-Path $ctkHome 'ctk\registration.txt'
+    $settingsFile = Join-Path $ctkHome 'settings.json'
+    if ($DryRun) { Write-Output "DRY-RUN: register CTK root $bootRoot in $regFile"; Write-Output "DRY-RUN: install SessionStart router in $settingsFile"; return }
+    Confirm-Mutation "Register CTK root $bootRoot and install the global SessionStart router?"
+    New-Item -ItemType Directory -Force -Path (Join-Path $ctkHome 'ctk') | Out-Null
+    $regBackup = $null
+    if (Test-Path -LiteralPath $regFile -PathType Leaf) { $regBackup = Save-HomeBackup $regFile $ctkHome }
+    $settingsBackup = $null
+    if (Test-Path -LiteralPath $settingsFile -PathType Leaf) { $settingsBackup = Save-HomeBackup $settingsFile $ctkHome }
+    Merge-SettingsHook $settingsFile $routerCommand
+    $lines = @(
+        '# ctk machine registration',
+        "schema`t$BootstrapSchema",
+        "root`t$bootRoot",
+        "version`t$Version",
+        "auto_apply_managed_ctk`t$($AutoApply.ToString().ToLowerInvariant())",
+        "registered`t$([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))"
+    )
+    [IO.File]::WriteAllLines($regFile, [string[]]$lines, [Text.UTF8Encoding]::new($false))
+    if ($regBackup) { Write-Output "CHANGED: registered CTK root $bootRoot in $regFile (backup: $regBackup)" } else { Write-Output "CHANGED: registered CTK root $bootRoot in $regFile" }
+    if ($settingsBackup) { Write-Output "CHANGED: installed global SessionStart router in $settingsFile (backup: $settingsBackup)" } else { Write-Output "CHANGED: installed global SessionStart router in $settingsFile" }
+    Write-Output 'Setup complete. Restart or open Claude Code in any project to use CTK automatically.'
+}
+function Invoke-Disable {
+    $ctkHome = Get-CtkHomeDir
+    $regFile = Join-Path $ctkHome 'ctk\registration.txt'
+    $settingsFile = Join-Path $ctkHome 'settings.json'
+    if ($DryRun) { Write-Output "DRY-RUN: remove CTK registration $regFile"; Write-Output "DRY-RUN: remove CTK SessionStart router from $settingsFile"; return }
+    Confirm-Mutation 'Disable CTK global session sync (remove machine registration and router hook)?'
+    $hasHook = (Test-Path -LiteralPath $settingsFile -PathType Leaf) -and (Select-String -LiteralPath $settingsFile -Pattern 'session-sync-router' -Quiet)
+    if ((Test-Path -LiteralPath $settingsFile -PathType Leaf) -and -not $hasHook) {
+        Write-Output "SKIP: no CTK router hook found in $settingsFile"
+    } elseif (Test-Path -LiteralPath $settingsFile -PathType Leaf) {
+        $settingsBackup = Save-HomeBackup $settingsFile $ctkHome
+        Remove-SettingsHook $settingsFile
+        Write-Output "CHANGED: removed CTK SessionStart router from $settingsFile (backup: $settingsBackup)"
+    } else {
+        Write-Output "SKIP: no settings file at $settingsFile"
+    }
+    if (Test-Path -LiteralPath $regFile -PathType Leaf) {
+        Remove-Item -LiteralPath $regFile -Force
+        Write-Output "CHANGED: removed CTK registration $regFile"
+    } else {
+        Write-Output "SKIP: no CTK registration found at $regFile"
+    }
+}
+
 $argList = New-Object System.Collections.Generic.List[string]; if ($Arguments) { $argList.AddRange([string[]]$Arguments) }
 if ($Command -eq 'state') { if ($argList.Count -eq 0) { Fail 'state requires show, add, or rotate' }; $StateAction = $argList[0]; $argList.RemoveAt(0); if ($StateAction -eq 'add') { if ($argList.Count -eq 0) { Fail 'state add requires one line of text' }; $StateText = $argList[0]; $argList.RemoveAt(0); if ($StateText -match "[`r`n]") { Fail 'state entries must be one line' } } elseif ($StateAction -notin @('show', 'rotate')) { Fail 'state requires show, add, or rotate' } }
 if ($Command -eq 'goal') { if ($argList.Count -eq 0) { Fail 'goal requires set, show, pause, complete, cancel, or clear' }; $GoalAction = $argList[0]; $argList.RemoveAt(0); if ($GoalAction -notin @('set', 'show', 'pause', 'complete', 'cancel', 'clear')) { Fail 'goal requires set, show, pause, complete, cancel, or clear' } }
 function Test-OneLine([string]$Name, [string]$Value) { if ($Value -match "[`r`n]") { Fail "$Name must be one line" } }
-for ($i = 0; $i -lt $argList.Count; $i++) { switch ($argList[$i]) { '--link' { $Mode = 'link'; $ModeSet = $true }; '--embed' { $Mode = 'embed'; $ModeSet = $true }; '--global' { $GlobalTarget = $true }; '--profile' { $i++; if ($i -ge $argList.Count) { Fail '--profile requires a value' }; $Profile = $argList[$i]; $ProfileSet = $true }; '--module' { $i++; if ($i -ge $argList.Count) { Fail '--module requires a value' }; if ([string]::IsNullOrWhiteSpace($argList[$i]) -or $argList[$i] -match '[\\/]' -or $argList[$i].Contains('..')) { Fail "invalid module name: $($argList[$i])" }; $RequestedModules.Add($argList[$i]) }; '--no-modules' { $ModulesDisabled = $true }; '--target' { $i++; if ($i -ge $argList.Count) { Fail '--target requires a directory' }; $TargetDir = $argList[$i] }; '--dry-run' { $DryRun = $true }; '--yes' { $AssumeYes = $true }; '--objective' { $i++; if ($i -ge $argList.Count) { Fail '--objective requires a value' }; Test-OneLine '--objective' $argList[$i]; $GoalObjective = $argList[$i] }; '--acceptance' { $i++; if ($i -ge $argList.Count) { Fail '--acceptance requires a value' }; Test-OneLine '--acceptance' $argList[$i]; $GoalAcceptance = $argList[$i] }; '--phase' { $i++; if ($i -ge $argList.Count) { Fail '--phase requires a value' }; Test-OneLine '--phase' $argList[$i]; $GoalPhase = $argList[$i] }; '--next' { $i++; if ($i -ge $argList.Count) { Fail '--next requires a value' }; Test-OneLine '--next' $argList[$i]; $GoalNext = $argList[$i] }; '--evidence' { $i++; if ($i -ge $argList.Count) { Fail '--evidence requires a value' }; Test-OneLine '--evidence' $argList[$i]; $GoalEvidence = $argList[$i] }; '--help' { $Command = 'help' }; '-h' { $Command = 'help' }; default { Fail "unknown option: $($argList[$i])" } } }
+for ($i = 0; $i -lt $argList.Count; $i++) { switch ($argList[$i]) { '--link' { $Mode = 'link'; $ModeSet = $true }; '--embed' { $Mode = 'embed'; $ModeSet = $true }; '--global' { $GlobalTarget = $true }; '--profile' { $i++; if ($i -ge $argList.Count) { Fail '--profile requires a value' }; $Profile = $argList[$i]; $ProfileSet = $true }; '--module' { $i++; if ($i -ge $argList.Count) { Fail '--module requires a value' }; if ([string]::IsNullOrWhiteSpace($argList[$i]) -or $argList[$i] -match '[\\/]' -or $argList[$i].Contains('..')) { Fail "invalid module name: $($argList[$i])" }; $RequestedModules.Add($argList[$i]) }; '--no-modules' { $ModulesDisabled = $true }; '--session-sync' { $SessionSync = $true }; '--root' { $i++; if ($i -ge $argList.Count) { Fail '--root requires a directory' }; $BootstrapRoot = $argList[$i] }; '--auto-apply' { $AutoApply = $true }; '--target' { $i++; if ($i -ge $argList.Count) { Fail '--target requires a directory' }; $TargetDir = $argList[$i] }; '--dry-run' { $DryRun = $true }; '--yes' { $AssumeYes = $true }; '--objective' { $i++; if ($i -ge $argList.Count) { Fail '--objective requires a value' }; Test-OneLine '--objective' $argList[$i]; $GoalObjective = $argList[$i] }; '--acceptance' { $i++; if ($i -ge $argList.Count) { Fail '--acceptance requires a value' }; Test-OneLine '--acceptance' $argList[$i]; $GoalAcceptance = $argList[$i] }; '--phase' { $i++; if ($i -ge $argList.Count) { Fail '--phase requires a value' }; Test-OneLine '--phase' $argList[$i]; $GoalPhase = $argList[$i] }; '--next' { $i++; if ($i -ge $argList.Count) { Fail '--next requires a value' }; Test-OneLine '--next' $argList[$i]; $GoalNext = $argList[$i] }; '--evidence' { $i++; if ($i -ge $argList.Count) { Fail '--evidence requires a value' }; Test-OneLine '--evidence' $argList[$i]; $GoalEvidence = $argList[$i] }; '--help' { $Command = 'help' }; '-h' { $Command = 'help' }; default { Fail "unknown option: $($argList[$i])" } } }
 if ($GlobalTarget) { $TargetDir = Join-Path $HOME '.claude' }
-switch ($Command) { 'install' { Invoke-Install }; 'update' { Invoke-Update }; 'uninstall' { Invoke-Uninstall }; 'restore' { Invoke-Restore }; 'status' { Ensure-ReadTarget; $state = Get-BlockState; Write-Output "Target: $(Get-TargetFile)"; if ($state -eq 'complete') { Write-Output "Managed block: present (profile: $(Get-HeaderValue 'profile'), mode: $(Get-BlockMode), hash: $(Get-HeaderValue 'hash'))" } else { Write-Output "Managed block: $state" }; $installedProfile = Get-InstalledProfile; if ($installedProfile) { Write-Output "Installed profile: $installedProfile" } elseif ($state -eq 'complete') { Write-Output "Installed profile: $(Get-HeaderValue 'profile')" } else { Write-Output 'Installed profile: none' }; Write-Output "Staged files: $(Get-InstalledCount)" }; 'doctor' { Invoke-Doctor }; 'budget' { Ensure-ReadTarget; Invoke-BudgetReport; if (-not $BudgetPassed) { exit 1 } }; 'state' { Invoke-State }; 'goal' { Invoke-Goal }; 'version' { Write-Output "ctk $Version" }; 'help' { Show-Usage }; default { Fail "unknown command: $Command (run 'ctk help')" } }
+switch ($Command) { 'install' { Invoke-Install }; 'update' { if ($SessionSync) { Invoke-SessionSync } else { Invoke-Update } }; 'uninstall' { Invoke-Uninstall }; 'restore' { Invoke-Restore }; 'status' { Ensure-ReadTarget; $state = Get-BlockState; Write-Output "Target: $(Get-TargetFile)"; if ($state -eq 'complete') { Write-Output "Managed block: present (profile: $(Get-HeaderValue 'profile'), mode: $(Get-BlockMode), hash: $(Get-HeaderValue 'hash'))" } else { Write-Output "Managed block: $state" }; $installedProfile = Get-InstalledProfile; if ($installedProfile) { Write-Output "Installed profile: $installedProfile" } elseif ($state -eq 'complete') { Write-Output "Installed profile: $(Get-HeaderValue 'profile')" } else { Write-Output 'Installed profile: none' }; Write-Output "Staged files: $(Get-InstalledCount)" }; 'doctor' { Invoke-Doctor }; 'budget' { Ensure-ReadTarget; Invoke-BudgetReport; if (-not $BudgetPassed) { exit 1 } }; 'state' { Invoke-State }; 'goal' { Invoke-Goal }; 'bootstrap' { Invoke-Bootstrap }; 'disable' { Invoke-Disable }; 'version' { Write-Output "ctk $Version" }; 'help' { Show-Usage }; default { Fail "unknown command: $Command (run 'ctk help')" } }

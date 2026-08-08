@@ -177,6 +177,22 @@ untouched, so local rules survive. In link mode there is usually nothing to upda
 because the import is resolved live; `ctk doctor` will tell you when the recorded
 hash no longer matches.
 
+## Zero-manual sync after the first install
+
+`ctk update` above is the manual path. If you'd rather never type `ctk install`,
+`ctk update`, or `ctk doctor` again after the first time, run the one-time machine
+bootstrap once:
+
+```sh
+ctk bootstrap --yes
+```
+
+After that, restarting Claude Code inside any already-managed project
+automatically synchronizes safe CTK-managed changes; a brand-new project gets one
+approval prompt instead of a terminal command hunt. See
+[zero-manual-sync.md](zero-manual-sync.md) for the full explanation, safety
+guarantees, and recovery steps.
+
 ## Removing
 
 See [uninstall.md](uninstall.md).

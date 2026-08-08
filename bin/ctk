@@ -2,11 +2,12 @@
 # ctk keeps its managed region narrow so local instructions remain authoritative.
 set -eu
 
-VERSION=3.1.0
+VERSION=3.2.0
 CORE_LIMIT=1200
 STATE_LIMIT=400
 GOAL_LIMIT=300
 MANIFEST_SCHEMA=1
+BOOTSTRAP_SCHEMA=1
 
 SCRIPT_DIR=$(CDPATH='' ; export CDPATH; cd "$(dirname "$0")" && pwd)
 ROOT_DIR=$(CDPATH='' ; export CDPATH; cd "$SCRIPT_DIR/.." && pwd)
@@ -27,6 +28,9 @@ PROFILE=standard
 PROFILE_SET=0
 MODULES_DISABLED=0
 REQUESTED_MODULES=
+SESSION_SYNC=0
+BOOTSTRAP_ROOT=
+AUTO_APPLY=
 STATE_ACTION=
 STATE_TEXT=
 GOAL_ACTION=
@@ -52,6 +56,8 @@ Commands:
   budget        Measure the always-loaded core and bounded state.
   state         state show | state add "text" | state rotate
   goal          goal set|show|pause|complete|cancel|clear
+  bootstrap     Register this checkout and a global SessionStart router, once per machine.
+  disable       Remove the registration and router installed by bootstrap.
   version       Print the toolkit version.
   help          Print this help.
 
@@ -65,11 +71,21 @@ Options:
   --target DIR              Target directory (default: current directory).
   --dry-run                 Describe a mutating operation without writing.
   --yes                     Do not prompt before a mutation.
+  --session-sync            update: non-interactive safe sync, fails closed on conflict.
+  --root DIR                bootstrap: register DIR instead of this script's own checkout.
+  --auto-apply              bootstrap: record auto_apply_managed_ctk=true (opt-in).
   --objective TEXT          goal set: the objective (required).
   --acceptance TEXT         goal set: the acceptance check (required).
   --phase TEXT              goal set/pause: the current phase.
   --next TEXT               goal set: the next verifiable action.
   --evidence TEXT           goal complete: the test/build evidence (required).
+
+Exit codes for 'update --session-sync':
+  0  current, or safe synchronization completed
+  10 first install needs in-chat approval; no write performed
+  11 locally modified managed content; no write performed
+  12 unknown/legacy/ambiguous state; no write performed
+  14 post-sync health check failed; backup preserved
 USAGE
 }
 
@@ -187,6 +203,13 @@ while [ "$#" -gt 0 ]; do
             REQUESTED_MODULES=${REQUESTED_MODULES}${REQUESTED_MODULES:+\n}$1
             ;;
         --no-modules) MODULES_DISABLED=1 ;;
+        --session-sync) SESSION_SYNC=1 ;;
+        --root)
+            shift
+            [ "$#" -gt 0 ] || die "--root requires a directory"
+            BOOTSTRAP_ROOT=$1
+            ;;
+        --auto-apply) AUTO_APPLY=true ;;
         --target)
             shift
             [ "$#" -gt 0 ] || die "--target requires a directory"
@@ -471,20 +494,14 @@ stage_state_file() {
     state_hash=$(printf '%s\n' "$state_contents" | hash_stdin)
     if [ -e "$STATE_FILE" ]; then
         [ -f "$STATE_FILE" ] || die "cannot stage state over non-file: $STATE_FILE"
-        if [ "$(hash_file "$STATE_FILE")" = "$state_hash" ]; then
-            [ "$DRY_RUN" -eq 0 ] && record_staged_file '.claude/ctk/STATE.md' "$state_hash"
-            if [ "$DRY_RUN" -eq 1 ]; then printf '%s\n' 'DRY-RUN: SKIP: identical staged file: .claude/ctk/STATE.md'; else printf '%s\n' 'SKIP: identical staged file: .claude/ctk/STATE.md'; fi
-            return
-        fi
-        if [ "$DRY_RUN" -eq 1 ]; then
-            printf '%s\n' 'DRY-RUN: BACKUP: .claude/ctk/STATE.md -> .ctk-backup/.claude/ctk/STATE.md.<timestamp>'
-            printf '%s\n' 'DRY-RUN: STAGE: @state -> .claude/ctk/STATE.md'
-            return
-        fi
-        staged_backup=$(backup_target "$STATE_FILE")
-        printf '%s\n' "$state_contents" > "$STATE_FILE"
-        record_staged_file '.claude/ctk/STATE.md' "$state_hash"
-        printf '%s\n' "CHANGED: staged .claude/ctk/STATE.md (backup: $staged_backup)"
+        # STATE.md is live data `ctk state add` owns, not a template to reset:
+        # once it exists at all, install/update must never overwrite it, only
+        # record whatever it currently contains. Comparing it against the
+        # pristine boilerplate hash here previously meant any accumulated
+        # checkpoint history was silently wiped back to empty on every update.
+        [ "$DRY_RUN" -eq 0 ] && record_staged_file '.claude/ctk/STATE.md' "$(hash_file "$STATE_FILE")"
+        if [ "$DRY_RUN" -eq 1 ]; then printf '%s\n' 'DRY-RUN: SKIP: state file already present: .claude/ctk/STATE.md'; else printf '%s\n' 'SKIP: state file already present: .claude/ctk/STATE.md'; fi
+        return
     else
         if [ "$DRY_RUN" -eq 1 ]; then printf '%s\n' 'DRY-RUN: STAGE: @state -> .claude/ctk/STATE.md'; return; fi
         mkdir -p "$(dirname "$STATE_FILE")"
@@ -659,6 +676,79 @@ update_cmd() {
     stage_selected_profile
 }
 
+# Reused by session_sync_cmd only: mirrors doctor_installed_assets' hash check
+# but stops and reports the first mismatch, since sync must fail closed before
+# writing anything rather than enumerate every drift.
+session_sync_conflict_check() {
+    awk -F '\t' 'NF == 2 && $1 !~ /^(version|profile|schema)$/ { print $1 "\t" $2 }' "$INSTALLED_FILE" |
+        (
+            inner_failed=0
+            while IFS="$(printf '\t')" read -r staged_path staged_hash; do
+                if ! safe_relative "$staged_path"; then
+                    printf '%s\n' "$staged_path"
+                    inner_failed=1
+                    break
+                fi
+                [ "$staged_path" = '.claude/ctk/STATE.md' ] && continue
+                staged_target=$TARGET_DIR/$staged_path
+                [ -f "$staged_target" ] || continue
+                if [ "$(hash_file "$staged_target")" != "$staged_hash" ]; then
+                    printf '%s\n' "$staged_path"
+                    inner_failed=1
+                    break
+                fi
+            done
+            exit "$inner_failed"
+        )
+}
+
+# Non-interactive counterpart to update_cmd for an automated SessionStart
+# router. Reuses block_state/render_block/backup_target/stage_selected_profile
+# unchanged; the only new behavior is the conflict pre-flight and the
+# machine-readable exit codes a router can act on without a TTY.
+session_sync_cmd() {
+    ensure_target_for_write
+    state=$(block_state)
+    if [ "$state" = absent ]; then
+        printf '%s\n' 'CTK: no managed block present; first install requires approval.'
+        exit 10
+    fi
+    if [ "$state" = orphan ]; then
+        printf '%s\n' "CTK: orphaned ctk markers in $TARGET_FILE; run 'ctk doctor', then resolve manually."
+        exit 12
+    fi
+    choose_existing_settings
+    if [ ! -f "$INSTALLED_FILE" ]; then
+        printf '%s\n' "CTK: managed block present with no install manifest; run 'ctk doctor' then 'ctk update --yes' manually once to establish one."
+        exit 12
+    fi
+    conflict_path=$(session_sync_conflict_check) || {
+        printf '%s\n' "CTK: locally modified managed file detected ($conflict_path); sync skipped, nothing overwritten."
+        exit 11
+    }
+    if [ "$(header_value hash)" = "$(core_hash12)" ] && [ "$(installed_version)" = "$VERSION" ]; then
+        printf '%s\n' "CTK: current ($VERSION, $(installed_profile) profile)."
+        exit 0
+    fi
+    backup=$(backup_target "$TARGET_FILE")
+    TMP_FILE=$(tmp_file)
+    awk '/^<!-- ctk:begin v=/ { exit } { print }' "$TARGET_FILE" > "$TMP_FILE"
+    render_block >> "$TMP_FILE"
+    awk 'seen { print } /^<!-- ctk:end -->$/ { seen = 1 }' "$TARGET_FILE" >> "$TMP_FILE"
+    mv "$TMP_FILE" "$TARGET_FILE"
+    TMP_FILE=
+    stage_selected_profile
+    health_ok=1
+    [ "$(header_value hash)" = "$(core_hash12)" ] || health_ok=0
+    budget_report >/dev/null 2>&1 || health_ok=0
+    if [ "$health_ok" -ne 1 ]; then
+        printf '%s\n' "CTK: sync applied but health check failed; backup at $backup. Run 'ctk doctor' to inspect."
+        exit 14
+    fi
+    printf '%s\n' "CTK: updated to $VERSION ($(installed_profile) profile); project state healthy."
+    exit 0
+}
+
 remove_empty_parents() {
     parent=$(dirname "$1")
     while [ "$parent" != "$TARGET_DIR" ] && [ "$parent" != . ]; do
@@ -775,6 +865,11 @@ installed_schema() {
     awk -F '\t' '$1 == "schema" { print $2; exit }' "$INSTALLED_FILE"
 }
 
+installed_version() {
+    [ -f "$INSTALLED_FILE" ] || return 0
+    awk -F '\t' '$1 == "version" { print $2; exit }' "$INSTALLED_FILE"
+}
+
 installed_count() {
     [ -f "$INSTALLED_FILE" ] || { printf '%s\n' 0; return; }
     awk -F '\t' 'NF == 2 && $1 !~ /^(version|profile|schema)$/ { count++ } END { print count + 0 }' "$INSTALLED_FILE"
@@ -841,6 +936,12 @@ doctor_installed_assets() {
                 if [ ! -f "$staged_target" ]; then
                     printf '%s\n' "FAIL: staged asset is missing: $staged_path"
                     asset_failed=1
+                elif [ "$staged_path" = '.claude/ctk/STATE.md' ]; then
+                    # STATE.md is expected to diverge from whatever hash was
+                    # last recorded, since `ctk state add` writes it directly
+                    # without updating the manifest; that divergence is normal
+                    # checkpoint activity, not drift.
+                    printf '%s\n' "PASS: state file present: $staged_path"
                 elif [ "$(hash_file "$staged_target")" = "$staged_hash" ]; then
                     printf '%s\n' "PASS: staged asset matches: $staged_path"
                 else
@@ -1004,9 +1105,225 @@ goal_cmd() {
     esac
 }
 
+# --- machine-level bootstrap/disable (registers a global SessionStart router; ---
+# --- never writes to a project directory, never uses TARGET_DIR/--target).    ---
+
+ctk_home_dir() {
+    home_base=${CTK_HOME:-${HOME:-}}
+    [ -n "$home_base" ] || die "HOME is not set; export HOME or CTK_HOME"
+    printf '%s\n' "$home_base/.claude"
+}
+
+# A tiny home-scoped counterpart to backup_target, which is hard-wired to
+# TARGET_DIR. Bootstrap/disable touch $HOME/.claude, not a project, so they
+# get their own timestamped backup under the same directory they mutate.
+backup_home_file() {
+    backup_source=$1
+    backup_root=$2
+    mkdir -p "$backup_root/.ctk-backup"
+    backup_stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    backup_name=$(basename "$backup_source")
+    backup=$backup_root/.ctk-backup/$backup_name.$backup_stamp
+    backup_n=1
+    while [ -e "$backup" ]; do
+        backup=$backup_root/.ctk-backup/$backup_name.$backup_stamp-$backup_n
+        backup_n=$((backup_n + 1))
+    done
+    cp "$backup_source" "$backup"
+    printf '%s\n' "$backup"
+}
+
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+# Adds/replaces exactly one SessionStart hook entry identified by the
+# "session-sync-router" substring in its command, preserving everything else
+# in the file byte-for-byte where jq is available, or writing a fresh minimal
+# file when the target is missing/empty. Never splices text into an existing
+# non-trivial file without a real JSON parser: a corrupted settings.json would
+# break every Claude Code session, not just CTK's.
+merge_settings_hook() {
+    settings_file=$1
+    command_str=$2
+    if command -v jq >/dev/null 2>&1; then
+        mkdir -p "$(dirname "$settings_file")"
+        if [ -f "$settings_file" ] && [ -s "$settings_file" ]; then
+            base_content=$(cat "$settings_file")
+        else
+            base_content='{}'
+        fi
+        if ! merged=$(printf '%s' "$base_content" | jq --arg cmd "$command_str" '
+            .hooks = (.hooks // {}) |
+            .hooks.SessionStart = ((.hooks.SessionStart // []) | map(select((.hooks // []) | any(.command? // "" | contains("session-sync-router")) | not))) + [{"hooks":[{"type":"command","command":$cmd}]}]
+        ' 2>/dev/null); then
+            printf '%s\n' "ERROR: existing settings file is not valid JSON: $settings_file" >&2
+            return 1
+        fi
+        printf '%s\n' "$merged" > "$settings_file"
+        return 0
+    fi
+    escaped=$(json_escape "$command_str")
+    if [ ! -s "$settings_file" ]; then
+        mkdir -p "$(dirname "$settings_file")"
+        {
+            printf '%s\n' '{'
+            printf '%s\n' '  "hooks": {'
+            printf '%s\n' '    "SessionStart": ['
+            printf '%s\n' "      { \"hooks\": [ { \"type\": \"command\", \"command\": \"$escaped\" } ] }"
+            printf '%s\n' '    ]'
+            printf '%s\n' '  }'
+            printf '%s\n' '}'
+        } > "$settings_file"
+        return 0
+    fi
+    # Idempotency without a JSON parser: if the exact (JSON-escaped) command we
+    # would install is already present verbatim, there is nothing to change,
+    # so re-running bootstrap on a jq-less machine still succeeds instead of
+    # failing closed on its own prior output.
+    if grep -F "$escaped" "$settings_file" >/dev/null 2>&1; then
+        return 0
+    fi
+    printf '%s\n' "ERROR: jq is not available and $settings_file already has content." >&2
+    printf '%s\n' 'Install jq, or add this entry to hooks.SessionStart by hand (append, do not replace other entries):' >&2
+    printf '%s\n' "{ \"hooks\": [ { \"type\": \"command\", \"command\": \"$(json_escape "$command_str")\" } ] }" >&2
+    return 1
+}
+
+# The removal counterpart of merge_settings_hook: same jq-or-fail-safe rule.
+remove_settings_hook() {
+    settings_file=$1
+    [ -f "$settings_file" ] || return 0
+    if command -v jq >/dev/null 2>&1; then
+        if ! merged=$(jq '
+            .hooks.SessionStart = ((.hooks.SessionStart // []) | map(select((.hooks // []) | any(.command? // "" | contains("session-sync-router")) | not)))
+        ' "$settings_file" 2>/dev/null); then
+            printf '%s\n' "ERROR: existing settings file is not valid JSON: $settings_file" >&2
+            return 1
+        fi
+        printf '%s\n' "$merged" > "$settings_file"
+        return 0
+    fi
+    grep -q 'session-sync-router' "$settings_file" 2>/dev/null || return 0
+    printf '%s\n' "ERROR: jq is not available; cannot safely remove the CTK hook from $settings_file." >&2
+    printf '%s\n' 'Manually delete the SessionStart entry whose command contains "session-sync-router".' >&2
+    return 1
+}
+
+validate_ctk_root() {
+    candidate=$1
+    [ -f "$candidate/bin/ctk" ] || die "not a CTK checkout (missing bin/ctk): $candidate"
+    [ -f "$candidate/core/CLAUDE.core.md" ] || die "not a CTK checkout (missing core/CLAUDE.core.md): $candidate"
+    [ -f "$candidate/router/session-sync-router.sh" ] || die "CTK checkout is missing the session-sync router: $candidate/router/session-sync-router.sh"
+}
+
+bootstrap_cmd() {
+    boot_root=${BOOTSTRAP_ROOT:-$ROOT_DIR}
+    boot_root=$(CDPATH='' ; export CDPATH; cd "$boot_root" 2>/dev/null && pwd) || die "--root is not a directory: $BOOTSTRAP_ROOT"
+    validate_ctk_root "$boot_root"
+    router_script=$boot_root/router/session-sync-router.sh
+    router_command="sh \"$router_script\""
+    ctk_home=$(ctk_home_dir)
+    reg_file=$ctk_home/ctk/registration.txt
+    settings_file=$ctk_home/settings.json
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '%s\n' "DRY-RUN: register CTK root $boot_root in $reg_file"
+        printf '%s\n' "DRY-RUN: install SessionStart router in $settings_file"
+        return
+    fi
+    confirm_mutation "Register CTK root $boot_root and install the global SessionStart router?" || die "bootstrap cancelled"
+    mkdir -p "$ctk_home/ctk"
+
+    # Ownership tracking lets `disable` remove settings.json outright, with no
+    # JSON parser, whenever CTK provably wrote 100% of its current content:
+    # empty/absent before this write, or unchanged since a prior fully-owned
+    # write recorded here. Any other case is conservatively "not owned," so
+    # disable always falls back to the jq-or-fail-safe merge path instead of
+    # ever guessing at content it did not write.
+    prev_owned=$( [ -f "$reg_file" ] && awk -F '\t' '$1 == "settings_owned" { print $2; exit }' "$reg_file" || true)
+    prev_hash=$( [ -f "$reg_file" ] && awk -F '\t' '$1 == "settings_hash" { print $2; exit }' "$reg_file" || true)
+    was_empty=1
+    [ -f "$settings_file" ] && [ -s "$settings_file" ] && was_empty=0
+    was_owned_unchanged=0
+    if [ "$was_empty" -eq 0 ] && [ "$prev_owned" = true ] && [ "$(hash_file "$settings_file")" = "$prev_hash" ]; then
+        was_owned_unchanged=1
+    fi
+
+    reg_backup=
+    [ -f "$reg_file" ] && reg_backup=$(backup_home_file "$reg_file" "$ctk_home")
+    settings_backup=
+    [ -f "$settings_file" ] && settings_backup=$(backup_home_file "$settings_file" "$ctk_home")
+    merge_settings_hook "$settings_file" "$router_command" || die "could not safely update $settings_file; see the message above for a manual step"
+
+    new_owned=false
+    new_hash=
+    if [ "$was_empty" -eq 1 ] || [ "$was_owned_unchanged" -eq 1 ]; then
+        new_owned=true
+        new_hash=$(hash_file "$settings_file")
+    fi
+    {
+        printf '%s\n' '# ctk machine registration'
+        printf 'schema\t%s\n' "$BOOTSTRAP_SCHEMA"
+        printf 'root\t%s\n' "$boot_root"
+        printf 'version\t%s\n' "$VERSION"
+        printf 'auto_apply_managed_ctk\t%s\n' "${AUTO_APPLY:-false}"
+        printf 'settings_owned\t%s\n' "$new_owned"
+        printf 'settings_hash\t%s\n' "$new_hash"
+        printf 'registered\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    } > "$reg_file"
+    if [ -n "$reg_backup" ]; then
+        printf '%s\n' "CHANGED: registered CTK root $boot_root in $reg_file (backup: $reg_backup)"
+    else
+        printf '%s\n' "CHANGED: registered CTK root $boot_root in $reg_file"
+    fi
+    if [ -n "$settings_backup" ]; then
+        printf '%s\n' "CHANGED: installed global SessionStart router in $settings_file (backup: $settings_backup)"
+    else
+        printf '%s\n' "CHANGED: installed global SessionStart router in $settings_file"
+    fi
+    printf '%s\n' 'Setup complete. Restart or open Claude Code in any project to use CTK automatically.'
+}
+
+disable_cmd() {
+    ctk_home=$(ctk_home_dir)
+    reg_file=$ctk_home/ctk/registration.txt
+    settings_file=$ctk_home/settings.json
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '%s\n' "DRY-RUN: remove CTK registration $reg_file"
+        printf '%s\n' "DRY-RUN: remove CTK SessionStart router from $settings_file"
+        return
+    fi
+    confirm_mutation 'Disable CTK global session sync (remove machine registration and router hook)?' || die "disable cancelled"
+    if [ -f "$settings_file" ] && ! grep -q 'session-sync-router' "$settings_file" 2>/dev/null; then
+        printf '%s\n' "SKIP: no CTK router hook found in $settings_file"
+    elif [ -f "$settings_file" ]; then
+        prev_owned=$(awk -F '\t' '$1 == "settings_owned" { print $2; exit }' "$reg_file" 2>/dev/null || true)
+        prev_hash=$(awk -F '\t' '$1 == "settings_hash" { print $2; exit }' "$reg_file" 2>/dev/null || true)
+        settings_backup=$(backup_home_file "$settings_file" "$ctk_home")
+        if [ "$prev_owned" = true ] && [ "$(hash_file "$settings_file")" = "$prev_hash" ]; then
+            # Registration proves CTK wrote 100% of this file's current bytes
+            # and nothing has touched it since, so it can be removed outright
+            # without a JSON parser rather than needing jq to text-merge.
+            rm -f "$settings_file"
+            printf '%s\n' "CHANGED: removed $settings_file (fully written by bootstrap; backup: $settings_backup)"
+        else
+            remove_settings_hook "$settings_file" || die "could not safely update $settings_file; see the message above for a manual step"
+            printf '%s\n' "CHANGED: removed CTK SessionStart router from $settings_file (backup: $settings_backup)"
+        fi
+    else
+        printf '%s\n' "SKIP: no settings file at $settings_file"
+    fi
+    if [ -f "$reg_file" ]; then
+        rm -f "$reg_file"
+        printf '%s\n' "CHANGED: removed CTK registration $reg_file"
+    else
+        printf '%s\n' "SKIP: no CTK registration found at $reg_file"
+    fi
+}
+
 case $COMMAND in
     install) install_cmd ;;
-    update) update_cmd ;;
+    update) if [ "$SESSION_SYNC" -eq 1 ]; then session_sync_cmd; else update_cmd; fi ;;
     uninstall) uninstall_cmd ;;
     restore) restore_cmd ;;
     status) status_cmd ;;
@@ -1014,6 +1331,8 @@ case $COMMAND in
     budget) budget_cmd ;;
     state) state_cmd ;;
     goal) goal_cmd ;;
+    bootstrap) bootstrap_cmd ;;
+    disable) disable_cmd ;;
     version) printf '%s\n' "ctk $VERSION" ;;
     help) usage ;;
     *) die "unknown command: $COMMAND (run 'ctk help')" ;;

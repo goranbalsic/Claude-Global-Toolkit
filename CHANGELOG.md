@@ -9,6 +9,57 @@ Versioning policy for this toolkit specifically:
 - **minor**: new commands, agents, skills, modules, or CLI capability
 - **major**: a change to the core operating rules or to the installer contract
 
+## [3.2.0] - 2026-08-08
+
+Corrective follow-up to 3.1.0: closes the gap between updating the CTK
+checkout and a project actually receiving that update. `ctk install`/`ctk
+update` were, and remain, manual commands; nothing previously told a second
+project, or a later Claude Code session, that the toolkit had changed. See
+`docs/CTKV4_DESIGN.md`'s "Follow-up: zero-manual project sync" section for the
+design record and `docs/zero-manual-sync.md` for the user-facing explanation.
+
+### Added
+
+- **`ctk bootstrap` / `ctk disable`**, in `bin/ctk` and `bin/ctk.ps1`. A
+  one-time, per-machine, reversible setup that records the toolkit's root path
+  in a small registration file and adds one `SessionStart` hook to the
+  user-level (not project-level) Claude Code settings. Idempotent; preserves
+  any unrelated existing hooks. On POSIX, the settings merge uses `jq` when
+  present and otherwise only ever performs a provably-safe operation (writing
+  a fresh file, or removing content it can prove it wrote in full) — it never
+  text-splices JSON it cannot parse. On Windows, PowerShell's own
+  `ConvertFrom-Json`/`ConvertTo-Json` are always available, so the merge is
+  always a real parse rather than a fallback.
+- **`ctk update --session-sync`**, a non-interactive counterpart to `ctk
+  update` for the router below. Reuses `update`'s own block-replace and
+  profile-staging code; the only new logic is a conflict pre-flight that
+  fails closed (exit `11`) before writing anything if any CTK-managed file was
+  locally modified, plus a post-sync health check (exit `14` on failure) and
+  the machine-readable exit codes `0`/`10`/`11`/`12`/`14` documented in `ctk
+  help`.
+- **`router/session-sync-router.sh` and `.ps1`**, the script the global hook
+  points at by absolute path. On every session start it resolves the
+  registered CTK root, decides whether the active project is unmanaged
+  (silent), already current, safely syncable, or in a state that needs a
+  human, and defers entirely to `ctk update --session-sync`/`ctk install` for
+  every write. It never stages a file itself and is not staged into any
+  project (`router/` is outside every profile manifest, specifically so it
+  is never copied into a consumer project by `ctk install`).
+
+### Fixed
+
+- **`STATE.md` was silently reset on every `ctk update`.** `stage_state_file`
+  compared the file against a hardcoded pristine-boilerplate hash rather than
+  treating "the file already exists" as sufficient; any content added by `ctk
+  state add` (including everything `/ctk:checkpoint` writes) was overwritten
+  back to empty on the very next `install` or `update`, and `ctk doctor`
+  reported it as a false "locally modified" failure. Both are pre-existing
+  defects in 3.0.0/3.1.0, found while building the conflict-detection path
+  above; fixed in `bin/ctk` and `bin/ctk.ps1` by treating an existing
+  `STATE.md` as data the tooling itself owns rather than a template to
+  compare against, and excluding it from the manifest hash-conflict check
+  used by `doctor` and `update --session-sync` for the same reason.
+
 ## [3.1.0] - 2026-08-08
 
 Closes the CTKv4 core/lean-feature gap: a versioned install manifest, a bounded

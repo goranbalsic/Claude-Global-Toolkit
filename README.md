@@ -25,6 +25,7 @@ Everything else costs nothing until you invoke it.
 - [What you get](#what-you-get)
 - [Install](#install)
 - [Per-project injection without token cost](#per-project-injection-without-token-cost)
+- [Zero-manual sync](#zero-manual-sync)
 - [Usage](#usage)
 - [Uninstall and revert](#uninstall-and-revert)
 - [Scope](#scope)
@@ -130,6 +131,12 @@ module asset for a stated task category instead of reading broadly).
   Verified by test: a keystore payload exits 2 and is refused, a Dart payload
   passes.
 
+**One opt-in global router**, registered once by `ctk bootstrap`, not staged
+into any project: on every session start it defers to `ctk update
+--session-sync` to synchronize an already-managed project, or names one
+approval-needed status for a first-time one. See [Zero-manual
+sync](#zero-manual-sync).
+
 **An opt-in Flutter/Android module** with 8 commands and real scripts: `analyze`,
 `test` (configurable concurrency, defaulting to `-j 1`, with the reason
 documented), `apk` (debug and release, `--split-per-abi`, flavors, size
@@ -225,7 +232,7 @@ manages a delimited block and leaves everything outside it untouched:
 # My project's own instructions
 Deploy only from main. Never touch the migrations directory without review.
 
-<!-- ctk:begin v=3.1.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
+<!-- ctk:begin v=3.2.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
 @/home/you/Claude-Global-Toolkit/core/CLAUDE.core.md
 <!-- ctk:end -->
 ```
@@ -233,6 +240,30 @@ Deploy only from main. Never touch the migrations directory without review.
 `install` appends the block. `update` replaces the block body only. `uninstall`
 deletes the block only. Your rules above it survive byte for byte, which is
 verified by test.
+
+## Zero-manual sync
+
+Everything above is a command you type. If you'd rather never type `ctk
+install`, `ctk update`, or `ctk doctor` again after the first time, bootstrap
+once per machine:
+
+```sh
+ctk bootstrap --yes        # POSIX
+```
+
+```powershell
+& .\bin\ctk.ps1 bootstrap --yes   # Windows
+```
+
+This registers the checkout and adds one `SessionStart` hook to your
+user-level Claude Code settings — not the project's. After that, restarting
+Claude Code inside any already-managed project synchronizes safe CTK-managed
+changes automatically; a brand-new project gets one approval prompt instead of
+a terminal command hunt. Local edits to managed files always block the
+automatic path rather than being overwritten, and nothing outside
+CTK-managed files is ever touched. `ctk disable` reverses it. Full detail,
+safety guarantees, and recovery steps in
+[docs/zero-manual-sync.md](docs/zero-manual-sync.md).
 
 ## Usage
 
@@ -361,6 +392,7 @@ bin/ctk.ps1                  PowerShell 5.1+, identical surface
 .claude/skills/              progressively disclosed skills
 .claude/settings.json        hook wiring
 hooks/                       session-start, pre-edit guard, post-edit format
+router/                      global SessionStart router, registered by `ctk bootstrap`
 modules/flutter-android/     opt-in Flutter and Android release workflows
 tests/run.sh                 test harness with fixtures
 docs/                        architecture, install, uninstall, budget, modules
@@ -386,6 +418,7 @@ docs/                        architecture, install, uninstall, budget, modules
 | [docs/architecture.md](docs/architecture.md) | Layer model, managed-block injection, design rationale |
 | [docs/token-budget.md](docs/token-budget.md) | What is measured, why, and how to keep the core small |
 | [docs/install.md](docs/install.md) | Full installation and profile reference |
+| [docs/zero-manual-sync.md](docs/zero-manual-sync.md) | One-time bootstrap, automatic project sync, safety and recovery |
 | [docs/uninstall.md](docs/uninstall.md) | Every reversal path |
 | [docs/writing-modules.md](docs/writing-modules.md) | The module contract |
 | [docs/migrating-from-v2.md](docs/migrating-from-v2.md) | v2 to v3 mapping and upgrade steps |

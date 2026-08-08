@@ -161,3 +161,75 @@ them to `.claude/commands/<module-name>/<command>.md` (invoked as
   and `install --profile full` / `update` / `doctor` against disposable
   fixture directories, including a manifest-duplicate-line regression check.
 - `sh -n bin/ctk` and PowerShell AST parse of `bin/ctk.ps1`: both clean.
+
+## Follow-up: zero-manual project sync
+
+Immediately after the pass above shipped, the actual UX gap it left was
+named directly: updating the CTK checkout does not update any project, because
+every `.claude/commands`, `.claude/skills`, `.claude/agents`, `hooks/`, and
+`.claude/settings.json` file a project has is a byte copy made by `ctk
+install`/`ctk update` — a manual command — never a live reference (`core/
+CLAUDE.core.md` is the sole exception, via link mode's `@`-import). A
+project-local `hooks/session-start.sh` cannot fix this either, because it does
+not exist in a project until after that project's first manual install.
+
+The fix is a **global** `SessionStart` router, registered once per machine by
+`ctk bootstrap` into the user-level (not project-level) Claude Code settings,
+which on every session start defers to the already-tested `ctk update
+--session-sync` for an existing project, or prints a one-line approval signal
+for a first-time one — never a second, parallel install implementation. Full
+architecture, safety boundary, and recovery paths are in
+`docs/zero-manual-sync.md`; this section records only what a plain reading of
+3.1.0's own code did not already make obvious.
+
+**Two defects found while building the conflict-detection path, fixed here
+because they are the same safety property this pass exists to add** (never
+silently destroy user data during a write CTK itself triggers), not scope
+creep:
+
+1. `stage_state_file` compared an existing `STATE.md` against a hardcoded
+   pristine-boilerplate hash and overwrote it on mismatch — meaning any
+   history `ctk state add` (and therefore `/ctk:checkpoint`) had written was
+   silently erased by the very next `install` or `update`. Reproduced before
+   touching any code: `ctk state add "x"; ctk update` left `STATE.md`
+   containing only the boilerplate line. Fixed by treating "the file already
+   exists" as sufficient — install/update never touch it again after first
+   creation, only re-record its current hash.
+2. The same hardcoded-hash comparison inside `doctor_installed_assets` meant
+   `ctk doctor` reported a false `FAIL: staged asset was locally modified:
+   .claude/ctk/STATE.md` after completely ordinary `ctk state add` use.
+   Reproduced the same way. Fixed by excluding the one well-known
+   `.claude/ctk/STATE.md` path from that hash comparison, and from the new
+   `update --session-sync` conflict pre-flight for the same reason: it is
+   data the tooling owns and mutates by design, not a template asset a user
+   is expected to leave untouched.
+
+**Why a new top-level `router/` directory instead of adding to `hooks/`:**
+`core/profiles/standard.txt` and `full.txt` stage the entire `hooks/`
+directory into every project. A router script placed there would have been
+copied into every consumer project's `hooks/`, uninvoked and pointless there
+— the router only ever runs from the authoritative checkout, addressed by the
+absolute path `ctk bootstrap` recorded. `router/` is deliberately outside
+every profile manifest.
+
+**Why the settings.json merge differs by platform:** PowerShell 5.1+ ships
+`ConvertFrom-Json`/`ConvertTo-Json`, a real parser guaranteed present on every
+supported Windows target, so `bin/ctk.ps1` always merges safely. POSIX `sh`
+has no such guarantee — `jq` is common but optional, consistent with this
+toolkit's no-required-runtime-dependency stance — so `bin/ctk`'s merge uses
+`jq` when present and otherwise only ever performs an operation it can prove
+is safe without one: writing a fresh file when none exists, treating an
+already-correct entry as a no-op, or (for `disable`) removing a file outright
+only when a hash recorded at the moment `bootstrap` wrote it *entirely* still
+matches. Any other existing content, without `jq`, fails closed with the
+exact JSON to add or the exact marker to remove printed for the user to apply
+by hand — never a `sed`/`awk` text splice against JSON.
+
+**Verification performed:** `sh tests/run.sh` (19 new tests covering
+bootstrap idempotency, disable's preservation of unrelated hooks, and every
+`update --session-sync` exit code and its file-preservation guarantee);
+`bin/ctk.ps1` and `router/session-sync-router.ps1` executed directly on
+Windows through the equivalent matrix, including the real `ConvertTo-Json`
+single-element-array collapse this pass found and worked around (`@()`
+re-wrapping every filtered array before serializing); PowerShell AST parse and
+`sh -n` on both new scripts.

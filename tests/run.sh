@@ -49,7 +49,7 @@ new_target() {
 test_fresh_install() {
     target=$(new_target fresh)
     "$CTK" install --target "$target" --yes >/dev/null
-    assert_file_contains "$target/CLAUDE.md" '<!-- ctk:begin v=3.1.0 profile=standard hash=' &&
+    assert_file_contains "$target/CLAUDE.md" '<!-- ctk:begin v=3.2.0 profile=standard hash=' &&
         assert_file_contains "$target/CLAUDE.md" '<!-- ctk:end -->'
 }
 
@@ -225,7 +225,7 @@ test_installed_manifest_is_accurate() {
     "$CTK" install --profile standard --target "$target" --yes >/dev/null
     manifest=$target/.claude/ctk/installed.txt
     [ "$(awk -F '\t' '$1 == "profile" { print $2 }' "$manifest")" = standard ] &&
-        [ "$(awk -F '\t' '$1 == "version" { print $2 }' "$manifest")" = 3.1.0 ] &&
+        [ "$(awk -F '\t' '$1 == "version" { print $2 }' "$manifest")" = 3.2.0 ] &&
         [ "$(awk -F '\t' '$1 == "schema" { print $2 }' "$manifest")" = 1 ] &&
         grep -F '.claude/commands/ctk/resume.md' "$manifest" >/dev/null &&
         grep -F 'hooks/session-start.sh' "$manifest" >/dev/null &&
@@ -334,6 +334,174 @@ test_flutter_module_skills_staged_with_module() {
         grep -F '.claude/skills/flutter-android/flutter-recon/SKILL.md' "$flutter/.claude/ctk/installed.txt" >/dev/null
 }
 
+new_ctk_home() {
+    new_target "$1"
+}
+
+test_bootstrap_registers_and_installs_router() {
+    home=$(new_ctk_home boot-fresh)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    assert_file_contains "$home/.claude/ctk/registration.txt" "root	$ROOT_DIR" &&
+        assert_file_contains "$home/.claude/settings.json" 'session-sync-router.sh'
+}
+
+test_bootstrap_is_idempotent() {
+    home=$(new_ctk_home boot-idempotent)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    [ "$(grep -o 'session-sync-router' "$home/.claude/settings.json" | wc -l)" -eq 1 ]
+}
+
+test_disable_removes_fully_owned_settings_and_registration() {
+    home=$(new_ctk_home boot-disable)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    CTK_HOME="$home" "$CTK" disable --yes >/dev/null
+    [ ! -e "$home/.claude/settings.json" ] && [ ! -e "$home/.claude/ctk/registration.txt" ]
+}
+
+test_bootstrap_preserves_unrelated_settings_content() {
+    home=$(new_ctk_home boot-unrelated)
+    mkdir -p "$home/.claude"
+    printf '%s' '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo unrelated-hook"}]}]}}' > "$home/.claude/settings.json"
+    # Whether this succeeds (jq present, real merge) or fails closed (no jq,
+    # existing content) depends on the environment; the one invariant that
+    # must always hold is that the pre-existing unrelated hook is never lost
+    # or corrupted, so the bootstrap call's own exit status is not asserted.
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null 2>&1 || true
+    assert_file_contains "$home/.claude/settings.json" 'echo unrelated-hook'
+}
+
+test_disable_noop_preserves_untouched_settings() {
+    home=$(new_ctk_home boot-disable-noop)
+    mkdir -p "$home/.claude"
+    printf '%s' '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo unrelated-hook"}]}]}}' > "$home/.claude/settings.json"
+    before=$(cksum "$home/.claude/settings.json")
+    CTK_HOME="$home" "$CTK" disable --yes >/dev/null
+    after=$(cksum "$home/.claude/settings.json")
+    [ "$before" = "$after" ]
+}
+
+test_session_sync_current_project_no_write() {
+    target=$(new_target sync-current)
+    "$CTK" install --target "$target" --yes >/dev/null
+    before=$(cksum "$target/CLAUDE.md")
+    if "$CTK" update --session-sync --target "$target" --yes > "$target/output"; then :; else return 1; fi
+    after=$(cksum "$target/CLAUDE.md")
+    grep -F 'CTK: current' "$target/output" >/dev/null && [ "$before" = "$after" ]
+}
+
+test_session_sync_first_install_needs_approval() {
+    target=$(new_target sync-first-install)
+    code=0
+    "$CTK" update --session-sync --target "$target" --yes > "$target/output" 2>&1 || code=$?
+    [ "$code" -eq 10 ] &&
+        grep -F 'first install requires approval' "$target/output" >/dev/null &&
+        [ ! -e "$target/CLAUDE.md" ]
+}
+
+test_session_sync_orphaned_markers_fail_closed() {
+    target=$(new_target sync-orphan)
+    printf '%s\n' '<!-- ctk:begin v=x -->' '<!-- ctk:end -->' '<!-- ctk:begin v=y -->' '<!-- ctk:end -->' > "$target/CLAUDE.md"
+    before=$(cksum "$target/CLAUDE.md")
+    code=0
+    "$CTK" update --session-sync --target "$target" --yes > "$target/output" 2>&1 || code=$?
+    after=$(cksum "$target/CLAUDE.md")
+    [ "$code" -eq 12 ] && [ "$before" = "$after" ]
+}
+
+test_session_sync_missing_manifest_fails_closed() {
+    target=$(new_target sync-no-manifest)
+    "$CTK" install --target "$target" --yes >/dev/null
+    rm -f "$target/.claude/ctk/installed.txt"
+    before=$(cksum "$target/CLAUDE.md")
+    code=0
+    "$CTK" update --session-sync --target "$target" --yes > "$target/output" 2>&1 || code=$?
+    after=$(cksum "$target/CLAUDE.md")
+    [ "$code" -eq 12 ] && [ "$before" = "$after" ]
+}
+
+test_session_sync_conflict_preserves_local_edit() {
+    target=$(new_target sync-conflict)
+    "$CTK" install --profile full --target "$target" --yes >/dev/null
+    printf '%s\n' 'local edit' >> "$target/.claude/commands/ctk/resume.md"
+    before_claude=$(cksum "$target/CLAUDE.md")
+    code=0
+    "$CTK" update --session-sync --target "$target" --yes > "$target/output" 2>&1 || code=$?
+    after_claude=$(cksum "$target/CLAUDE.md")
+    [ "$code" -eq 11 ] &&
+        grep -F 'locally modified managed file detected (.claude/commands/ctk/resume.md)' "$target/output" >/dev/null &&
+        grep -F 'local edit' "$target/.claude/commands/ctk/resume.md" >/dev/null &&
+        [ "$before_claude" = "$after_claude" ]
+}
+
+test_session_sync_applies_safe_update_after_drift() {
+    kit=$(new_isolated_toolkit sync-drift)
+    target=$WORK/sync-drift/target
+    mkdir -p "$target"
+    "$kit/bin/ctk" install --target "$target" --yes >/dev/null
+    before_hash=$(grep -o 'hash=[a-f0-9]*' "$target/CLAUDE.md")
+    printf '\n%s\n' '<!-- test: pretend upstream change -->' >> "$kit/core/CLAUDE.core.md"
+    "$kit/bin/ctk" update --session-sync --target "$target" --yes > "$target/output"
+    code=$?
+    after_hash=$(grep -o 'hash=[a-f0-9]*' "$target/CLAUDE.md")
+    [ "$code" -eq 0 ] &&
+        [ "$before_hash" != "$after_hash" ] &&
+        grep -F 'CTK: updated to' "$target/output" >/dev/null &&
+        "$kit/bin/ctk" update --session-sync --target "$target" --yes | grep -F 'CTK: current' >/dev/null
+}
+
+test_session_sync_preserves_checkpoint_state() {
+    kit=$(new_isolated_toolkit sync-state-preserve)
+    target=$WORK/sync-state-preserve/target
+    mkdir -p "$target"
+    "$kit/bin/ctk" install --target "$target" --yes >/dev/null
+    "$kit/bin/ctk" state add "checkpoint before drift" --target "$target" --yes >/dev/null
+    printf '\n%s\n' '<!-- test: pretend upstream change -->' >> "$kit/core/CLAUDE.core.md"
+    "$kit/bin/ctk" update --session-sync --target "$target" --yes >/dev/null
+    assert_file_contains "$target/.claude/ctk/STATE.md" 'checkpoint before drift'
+}
+
+test_doctor_passes_after_state_add() {
+    target=$(new_target doctor-state-add)
+    "$CTK" install --target "$target" --yes >/dev/null
+    "$CTK" state add "a normal checkpoint" --target "$target" --yes >/dev/null
+    "$CTK" doctor --target "$target" >/dev/null
+}
+
+test_update_preserves_state_history() {
+    target=$(new_target update-state-preserve)
+    "$CTK" install --target "$target" --yes >/dev/null
+    "$CTK" state add "must survive update" --target "$target" --yes >/dev/null
+    "$CTK" update --target "$target" --yes >/dev/null
+    assert_file_contains "$target/.claude/ctk/STATE.md" 'must survive update'
+}
+
+test_router_unrelated_directory_is_silent() {
+    home=$(new_ctk_home router-unrelated-home)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    unrelated=$(new_target router-unrelated-dir)
+    output=$(CTK_HOME="$home" CLAUDE_PROJECT_DIR="$unrelated" sh "$ROOT_DIR/router/session-sync-router.sh")
+    [ -z "$output" ] && [ ! -e "$unrelated/.claude" ] && [ ! -e "$unrelated/CLAUDE.md" ]
+}
+
+test_router_first_time_project_reports_approval() {
+    home=$(new_ctk_home router-first-home)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    first=$WORK/router-first-project
+    mkdir -p "$first/.git"
+    output=$(CTK_HOME="$home" CLAUDE_PROJECT_DIR="$first" sh "$ROOT_DIR/router/session-sync-router.sh")
+    printf '%s\n' "$output" | grep -F 'approval required' >/dev/null && [ ! -e "$first/CLAUDE.md" ]
+}
+
+test_router_existing_project_defers_to_session_sync() {
+    home=$(new_ctk_home router-existing-home)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    target=$(new_target router-existing-project)
+    "$CTK" install --target "$target" --yes >/dev/null
+    output=$(CTK_HOME="$home" CLAUDE_PROJECT_DIR="$target" sh "$ROOT_DIR/router/session-sync-router.sh")
+    printf '%s\n' "$output" | grep -F 'CTK: current' >/dev/null
+}
+
 run_test test_fresh_install
 run_test test_idempotent_install
 run_test test_user_content_preserved
@@ -358,6 +526,23 @@ run_test test_doctor_warns_on_legacy_manifest
 run_test test_goal_lifecycle
 run_test test_goal_excluded_from_budget
 run_test test_flutter_module_skills_staged_with_module
+run_test test_bootstrap_registers_and_installs_router
+run_test test_bootstrap_is_idempotent
+run_test test_disable_removes_fully_owned_settings_and_registration
+run_test test_bootstrap_preserves_unrelated_settings_content
+run_test test_disable_noop_preserves_untouched_settings
+run_test test_session_sync_current_project_no_write
+run_test test_session_sync_first_install_needs_approval
+run_test test_session_sync_orphaned_markers_fail_closed
+run_test test_session_sync_missing_manifest_fails_closed
+run_test test_session_sync_conflict_preserves_local_edit
+run_test test_session_sync_applies_safe_update_after_drift
+run_test test_session_sync_preserves_checkpoint_state
+run_test test_doctor_passes_after_state_add
+run_test test_update_preserves_state_history
+run_test test_router_unrelated_directory_is_silent
+run_test test_router_first_time_project_reports_approval
+run_test test_router_existing_project_defers_to_session_sync
 
 printf '%s\n' "SUMMARY: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

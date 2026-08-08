@@ -381,6 +381,109 @@ test_disable_noop_preserves_untouched_settings() {
     [ "$before" = "$after" ]
 }
 
+GLOBAL_COMMAND_NAMES='install update doctor status resume checkpoint goal refine'
+
+test_bootstrap_creates_global_commands() {
+    home=$(new_ctk_home boot-global-fresh)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >"$home/output"
+    [ -f "$home/.claude/ctk/global-router.sh" ] || return 1
+    for cmd_name in $GLOBAL_COMMAND_NAMES; do
+        [ -f "$home/.claude/commands/ctk/$cmd_name.md" ] || return 1
+    done
+    grep -F 'Global commands available' "$home/output" >/dev/null &&
+        grep -F '/ctk:install' "$home/output" >/dev/null &&
+        grep -F '/ctk:refine' "$home/output" >/dev/null
+}
+
+test_bootstrap_global_commands_idempotent() {
+    home=$(new_ctk_home boot-global-idempotent)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    before=$(cksum "$home/.claude/commands/ctk/resume.md")
+    before_router=$(cksum "$home/.claude/ctk/global-router.sh")
+    CTK_HOME="$home" "$CTK" bootstrap --yes >"$home/output2"
+    after=$(cksum "$home/.claude/commands/ctk/resume.md")
+    after_router=$(cksum "$home/.claude/ctk/global-router.sh")
+    [ "$before" = "$after" ] && [ "$before_router" = "$after_router" ] &&
+        grep -F 'SKIP: identical global file: commands/ctk/resume.md' "$home/output2" >/dev/null
+}
+
+test_disable_removes_only_ctk_owned_global_commands() {
+    home=$(new_ctk_home boot-global-disable)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    mkdir -p "$home/.claude/commands/other-tool"
+    printf '%s\n' 'unrelated user command' > "$home/.claude/commands/other-tool/foo.md"
+    printf '%s\n' 'unrelated user note' > "$home/.claude/commands/ctk/my-notes.md"
+    CTK_HOME="$home" "$CTK" disable --yes >/dev/null
+    for cmd_name in $GLOBAL_COMMAND_NAMES; do
+        [ ! -e "$home/.claude/commands/ctk/$cmd_name.md" ] || return 1
+    done
+    [ ! -e "$home/.claude/ctk/global-router.sh" ] &&
+        [ -f "$home/.claude/commands/other-tool/foo.md" ] &&
+        [ -f "$home/.claude/commands/ctk/my-notes.md" ]
+}
+
+test_global_command_files_have_correct_routing() {
+    home=$(new_ctk_home boot-global-routing)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    router="$home/.claude/ctk/global-router.sh"
+    grep -F 'registration.txt' "$router" >/dev/null &&
+        grep -F 'powershell -NoProfile -ExecutionPolicy Bypass -File' "$router" >/dev/null &&
+        grep -F 'sh "$ctk_script"' "$router" >/dev/null || return 1
+    for cmd_name in $GLOBAL_COMMAND_NAMES; do
+        cmd_file="$home/.claude/commands/ctk/$cmd_name.md"
+        ! grep -F 'CLAUDE_PROJECT_DIR/bin/ctk' "$cmd_file" >/dev/null || return 1
+        # resume is the one command with no CLI dependency at all (pure git +
+        # STATE.md read), so it is the one file that never needs to route
+        # through global-router.sh; every other command does.
+        if [ "$cmd_name" != resume ]; then
+            grep -F 'global-router.sh' "$cmd_file" >/dev/null || return 1
+        fi
+    done
+}
+
+test_global_commands_do_not_load_full_core_by_default() {
+    for cmd_name in $GLOBAL_COMMAND_NAMES; do
+        tpl="$ROOT_DIR/global-commands/$cmd_name.md"
+        [ -f "$tpl" ] || return 1
+        # No unconditional @-style import of the core file.
+        ! grep -E '^@.*CLAUDE\.core\.md' "$tpl" >/dev/null || return 1
+        # The only place content is actually loaded eagerly (before Claude
+        # even reads the instructions) is an inline !`...` exec line. Prose
+        # elsewhere -- e.g. refine.md naming `.claude/skills/**/SKILL.md` as
+        # a target pattern it may propose edits to -- is on-demand analysis,
+        # not an eager load, so only inline-exec lines are checked here.
+        if grep -E '^!`' "$tpl" | grep -qE 'CLAUDE\.core\.md|\.claude/skills|\.claude/ctk/GOAL\.md|modules/flutter-android'; then
+            return 1
+        fi
+    done
+}
+
+test_global_install_works_before_project_ctk_files_exist() {
+    home=$(new_ctk_home boot-global-install)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    project=$(new_target new-project-no-ctk)
+    [ ! -e "$project/.claude" ] &&
+        [ ! -e "$project/bin/ctk" ] || return 1
+    CTK_HOME="$home" sh "$home/.claude/ctk/global-router.sh" install --profile standard --target "$project" --yes >/dev/null
+    assert_file_contains "$project/CLAUDE.md" '<!-- ctk:begin v=' &&
+        [ -f "$project/.claude/commands/ctk/resume.md" ]
+}
+
+test_global_update_doctor_resume_on_existing_apk_project() {
+    home=$(new_ctk_home boot-global-apk)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    project=$(new_target apk-project)
+    printf '%s\n' 'name: demo' 'dependencies:' '  flutter:' '    sdk: flutter' > "$project/pubspec.yaml"
+    CTK_HOME="$home" sh "$home/.claude/ctk/global-router.sh" install --profile full --target "$project" --yes >/dev/null
+    [ -f "$project/.claude/commands/flutter-android/apk.md" ] || return 1
+    CTK_HOME="$home" sh "$home/.claude/ctk/global-router.sh" doctor --target "$project" >"$project/doctor-output" || return 1
+    grep -F 'PASS: one complete managed block is present' "$project/doctor-output" >/dev/null || return 1
+    CTK_HOME="$home" sh "$home/.claude/ctk/global-router.sh" update --target "$project" --yes >"$project/update-output" || return 1
+    grep -F 'CHANGED: updated managed block' "$project/update-output" >/dev/null || return 1
+    CTK_HOME="$home" sh "$home/.claude/ctk/global-router.sh" state add "resumed via global command" --target "$project" --yes >/dev/null
+    assert_file_contains "$project/.claude/ctk/STATE.md" 'resumed via global command'
+}
+
 test_session_sync_current_project_no_write() {
     target=$(new_target sync-current)
     "$CTK" install --target "$target" --yes >/dev/null
@@ -531,6 +634,13 @@ run_test test_bootstrap_is_idempotent
 run_test test_disable_removes_fully_owned_settings_and_registration
 run_test test_bootstrap_preserves_unrelated_settings_content
 run_test test_disable_noop_preserves_untouched_settings
+run_test test_bootstrap_creates_global_commands
+run_test test_bootstrap_global_commands_idempotent
+run_test test_disable_removes_only_ctk_owned_global_commands
+run_test test_global_command_files_have_correct_routing
+run_test test_global_commands_do_not_load_full_core_by_default
+run_test test_global_install_works_before_project_ctk_files_exist
+run_test test_global_update_doctor_resume_on_existing_apk_project
 run_test test_session_sync_current_project_no_write
 run_test test_session_sync_first_install_needs_approval
 run_test test_session_sync_orphaned_markers_fail_closed

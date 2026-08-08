@@ -243,9 +243,11 @@ verified by test.
 
 ## Zero-manual sync
 
-Everything above is a command you type. If you'd rather never type `ctk
-install`, `ctk update`, or `ctk doctor` again after the first time, bootstrap
-once per machine:
+Everything above is a command you type. Bootstrap once per machine and you
+never have to type `ctk install`, `ctk update`, or `ctk doctor` in a terminal
+again — you drive CTK entirely from inside Claude Code instead.
+
+**One time:**
 
 ```sh
 ctk bootstrap --yes        # POSIX
@@ -255,14 +257,39 @@ ctk bootstrap --yes        # POSIX
 & .\bin\ctk.ps1 bootstrap --yes   # Windows
 ```
 
-This registers the checkout and adds one `SessionStart` hook to your
-user-level Claude Code settings — not the project's. After that, restarting
-Claude Code inside any already-managed project synchronizes safe CTK-managed
-changes automatically; a brand-new project gets one approval prompt instead of
-a terminal command hunt. Local edits to managed files always block the
-automatic path rather than being overwritten, and nothing outside
-CTK-managed files is ever touched. `ctk disable` reverses it. Full detail,
-safety guarantees, and recovery steps in
+**Then forever:**
+
+- Open Claude Code in any project.
+- Use `/ctk:install` for a new project.
+- Use `/ctk:update` for an existing project.
+- Use `/ctk:doctor` if something is wrong.
+- Use `/ctk:resume` to continue work.
+
+No `ctk install`, `ctk update`, or `ctk doctor` typed in a terminal, no
+`PATH` edits, no hunting for `bin/ctk`.
+
+Bootstrap does two things, both reversible and both restart-once to take
+effect:
+
+1. Registers the checkout and adds one `SessionStart` hook to your
+   user-level Claude Code settings — not the project's — so that restarting
+   Claude Code inside any already-managed project synchronizes safe
+   CTK-managed changes automatically, and a brand-new project gets one
+   approval prompt instead of a terminal command hunt.
+2. Installs eight global slash commands — `/ctk:install`, `/ctk:update`,
+   `/ctk:doctor`, `/ctk:status`, `/ctk:resume`, `/ctk:checkpoint`,
+   `/ctk:goal`, `/ctk:refine` — into `~/.claude/commands/ctk/` (POSIX) or
+   `%USERPROFILE%\.claude\commands\ctk\` (Windows). These are thin routers:
+   each one resolves the registered CTK root at runtime and calls the real
+   `ctk` CLI at its absolute path, so they work in any project, in any
+   session, before any project-local CTK files exist and without ever
+   touching `PATH`.
+
+Local edits to managed files always block the automatic path rather than
+being overwritten, and nothing outside CTK-managed files is ever touched.
+`ctk disable` removes only the registration, the router hook, and these eight
+global command files — never anything else in `~/.claude/commands/`. Full
+detail, safety guarantees, and recovery steps in
 [docs/zero-manual-sync.md](docs/zero-manual-sync.md).
 
 ## Usage
@@ -387,12 +414,13 @@ core/CLAUDE.core.md          the always-loaded rules, budget-enforced
 core/profiles/               which assets each profile installs
 bin/ctk                      POSIX sh CLI, zero dependencies
 bin/ctk.ps1                  PowerShell 5.1+, identical surface
-.claude/commands/ctk/        slash commands
+.claude/commands/ctk/        slash commands (project-local install)
 .claude/agents/              subagents, isolated context
 .claude/skills/              progressively disclosed skills
 .claude/settings.json        hook wiring
+global-commands/             global /ctk:* slash-command templates, installed by `ctk bootstrap`
 hooks/                       session-start, pre-edit guard, post-edit format
-router/                      global SessionStart router, registered by `ctk bootstrap`
+router/                      global SessionStart router + global command router, registered by `ctk bootstrap`
 modules/flutter-android/     opt-in Flutter and Android release workflows
 tests/run.sh                 test harness with fixtures
 docs/                        architecture, install, uninstall, budget, modules

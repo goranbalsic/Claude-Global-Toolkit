@@ -56,8 +56,8 @@ Commands:
   budget        Measure the always-loaded core and bounded state.
   state         state show | state add "text" | state rotate
   goal          goal set|show|pause|complete|cancel|clear
-  bootstrap     Register this checkout and a global SessionStart router, once per machine.
-  disable       Remove the registration and router installed by bootstrap.
+  bootstrap     Register this checkout, a global SessionStart router, and global /ctk:* slash commands, once per machine.
+  disable       Remove the registration, router, and global commands installed by bootstrap.
   version       Print the toolkit version.
   help          Print this help.
 
@@ -1215,6 +1215,80 @@ validate_ctk_root() {
     [ -f "$candidate/bin/ctk" ] || die "not a CTK checkout (missing bin/ctk): $candidate"
     [ -f "$candidate/core/CLAUDE.core.md" ] || die "not a CTK checkout (missing core/CLAUDE.core.md): $candidate"
     [ -f "$candidate/router/session-sync-router.sh" ] || die "CTK checkout is missing the session-sync router: $candidate/router/session-sync-router.sh"
+    [ -f "$candidate/router/global-router.sh" ] || die "CTK checkout is missing the global command router: $candidate/router/global-router.sh"
+    [ -d "$candidate/global-commands" ] || die "CTK checkout is missing global command templates: $candidate/global-commands"
+}
+
+# Global Claude Code slash-command source of truth: bootstrap copies these
+# files, byte for byte, out of the registered checkout into
+# $ctk_home/commands/ctk/ and $ctk_home/ctk/global-router.sh. `disable`
+# removes exactly this named set and nothing a user may have placed
+# alongside them.
+GLOBAL_COMMAND_NAMES='install update doctor status resume checkpoint goal refine'
+
+# A tiny home-scoped counterpart to stage_one_file, which is hard-wired to
+# TARGET_DIR/backup_target. Global command/router files live under
+# $ctk_home, not a project, so they get their own backup-on-change via
+# backup_home_file.
+stage_home_file() {
+    source_file=$1
+    relative_destination=$2
+    home_root=$3
+    destination=$home_root/$relative_destination
+    if [ -e "$destination" ]; then
+        [ -f "$destination" ] || die "cannot stage global file over non-file: $destination"
+        if cmp -s "$source_file" "$destination"; then
+            printf '%s\n' "SKIP: identical global file: $relative_destination"
+            return
+        fi
+        home_backup=$(backup_home_file "$destination" "$home_root")
+        mkdir -p "$(dirname "$destination")"
+        cp "$source_file" "$destination"
+        printf '%s\n' "CHANGED: installed global file: $relative_destination (backup: $home_backup)"
+    else
+        mkdir -p "$(dirname "$destination")"
+        cp "$source_file" "$destination"
+        printf '%s\n' "CHANGED: installed global file: $relative_destination"
+    fi
+}
+
+install_global_commands() {
+    boot_root=$1
+    ctk_home=$2
+    mkdir -p "$ctk_home/commands/ctk"
+    stage_home_file "$boot_root/router/global-router.sh" 'ctk/global-router.sh' "$ctk_home"
+    installed_list=''
+    for name in $GLOBAL_COMMAND_NAMES; do
+        stage_home_file "$boot_root/global-commands/$name.md" "commands/ctk/$name.md" "$ctk_home"
+        installed_list="$installed_list /ctk:$name"
+    done
+    printf '%s\n' "Global commands available (after one Claude Code restart):$installed_list"
+}
+
+remove_global_commands() {
+    ctk_home=$1
+    removed=0
+    router_file=$ctk_home/ctk/global-router.sh
+    if [ -f "$router_file" ]; then
+        rm -f "$router_file"
+        printf '%s\n' "CHANGED: removed $router_file"
+        removed=1
+    fi
+    commands_dir=$ctk_home/commands/ctk
+    for name in $GLOBAL_COMMAND_NAMES; do
+        cmd_file=$commands_dir/$name.md
+        if [ -f "$cmd_file" ]; then
+            rm -f "$cmd_file"
+            printf '%s\n' "CHANGED: removed $cmd_file"
+            removed=1
+        fi
+    done
+    if [ -d "$commands_dir" ]; then
+        # rmdir only succeeds if empty, so a user file dropped alongside the
+        # CTK-owned ones is left in place and the directory survives.
+        rmdir "$commands_dir" 2>/dev/null || true
+    fi
+    [ "$removed" -eq 1 ] || printf '%s\n' "SKIP: no CTK global commands found under $commands_dir"
 }
 
 bootstrap_cmd() {
@@ -1229,6 +1303,7 @@ bootstrap_cmd() {
     if [ "$DRY_RUN" -eq 1 ]; then
         printf '%s\n' "DRY-RUN: register CTK root $boot_root in $reg_file"
         printf '%s\n' "DRY-RUN: install SessionStart router in $settings_file"
+        printf '%s\n' "DRY-RUN: install global commands in $ctk_home/commands/ctk/ ($GLOBAL_COMMAND_NAMES)"
         return
     fi
     confirm_mutation "Register CTK root $boot_root and install the global SessionStart router?" || die "bootstrap cancelled"
@@ -1281,7 +1356,8 @@ bootstrap_cmd() {
     else
         printf '%s\n' "CHANGED: installed global SessionStart router in $settings_file"
     fi
-    printf '%s\n' 'Setup complete. Restart or open Claude Code in any project to use CTK automatically.'
+    install_global_commands "$boot_root" "$ctk_home"
+    printf '%s\n' 'Setup complete. Restart Claude Code once to use the /ctk:* commands and automatic project sync in any project.'
 }
 
 disable_cmd() {
@@ -1291,9 +1367,10 @@ disable_cmd() {
     if [ "$DRY_RUN" -eq 1 ]; then
         printf '%s\n' "DRY-RUN: remove CTK registration $reg_file"
         printf '%s\n' "DRY-RUN: remove CTK SessionStart router from $settings_file"
+        printf '%s\n' "DRY-RUN: remove CTK global commands from $ctk_home/commands/ctk/ and $ctk_home/ctk/global-router.sh"
         return
     fi
-    confirm_mutation 'Disable CTK global session sync (remove machine registration and router hook)?' || die "disable cancelled"
+    confirm_mutation 'Disable CTK global session sync (remove machine registration, router hook, and global commands)?' || die "disable cancelled"
     if [ -f "$settings_file" ] && ! grep -q 'session-sync-router' "$settings_file" 2>/dev/null; then
         printf '%s\n' "SKIP: no CTK router hook found in $settings_file"
     elif [ -f "$settings_file" ]; then
@@ -1319,6 +1396,7 @@ disable_cmd() {
     else
         printf '%s\n' "SKIP: no CTK registration found at $reg_file"
     fi
+    remove_global_commands "$ctk_home"
 }
 
 case $COMMAND in

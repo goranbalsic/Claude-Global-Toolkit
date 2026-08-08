@@ -60,8 +60,8 @@ Commands:
   budget        Measure the always-loaded core and bounded state.
   state         state show | state add "text" | state rotate
   goal          goal set|show|pause|complete|cancel|clear
-  bootstrap     Register this checkout and a global SessionStart router, once per machine.
-  disable       Remove the registration and router installed by bootstrap.
+  bootstrap     Register this checkout, a global SessionStart router, and global /ctk:* slash commands, once per machine.
+  disable       Remove the registration, router, and global commands installed by bootstrap.
   version       Print the toolkit version.
   help          Print this help.
 
@@ -512,6 +512,59 @@ function Test-CtkRoot([string]$Candidate) {
     if (-not (Test-Path -LiteralPath (Join-Path $Candidate 'core\CLAUDE.core.md') -PathType Leaf)) { Fail "not a CTK checkout (missing core\CLAUDE.core.md): $Candidate" }
     $router = Join-Path $Candidate 'router\session-sync-router.ps1'
     if (-not (Test-Path -LiteralPath $router -PathType Leaf)) { Fail "CTK checkout is missing the session-sync router: $router" }
+    $globalRouter = Join-Path $Candidate 'router\global-router.sh'
+    if (-not (Test-Path -LiteralPath $globalRouter -PathType Leaf)) { Fail "CTK checkout is missing the global command router: $globalRouter" }
+    $globalCommands = Join-Path $Candidate 'global-commands'
+    if (-not (Test-Path -LiteralPath $globalCommands -PathType Container)) { Fail "CTK checkout is missing global command templates: $globalCommands" }
+}
+# Global Claude Code slash-command source of truth: bootstrap copies these
+# files, byte for byte, out of the registered checkout into
+# $ctkHome\commands\ctk\ and $ctkHome\ctk\global-router.sh. Disable removes
+# exactly this named set and nothing a user may have placed alongside them.
+$GlobalCommandNames = @('install', 'update', 'doctor', 'status', 'resume', 'checkpoint', 'goal', 'refine')
+# A tiny home-scoped counterpart to Stage-File, which is hard-wired to
+# TargetDir/Save-Backup. Global command/router files live under $ctkHome,
+# not a project, so they get their own backup-on-change via Save-HomeBackup.
+function Stage-HomeFile([string]$Source, [string]$RelativeDestination, [string]$HomeRoot) {
+    $destination = Join-Path $HomeRoot $RelativeDestination
+    if (Test-Path -LiteralPath $destination) {
+        if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) { Fail "cannot stage global file over non-file: $destination" }
+        if ((Get-FileSha256 $Source) -eq (Get-FileSha256 $destination)) { Write-Output "SKIP: identical global file: $RelativeDestination"; return }
+        $backup = Save-HomeBackup $destination $HomeRoot
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+        Copy-Item -LiteralPath $Source -Destination $destination -Force
+        Write-Output "CHANGED: installed global file: $RelativeDestination (backup: $backup)"
+    } else {
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+        Copy-Item -LiteralPath $Source -Destination $destination
+        Write-Output "CHANGED: installed global file: $RelativeDestination"
+    }
+}
+function Install-GlobalCommands([string]$BootRoot, [string]$CtkHome) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $CtkHome 'commands\ctk') | Out-Null
+    Stage-HomeFile (Join-Path $BootRoot 'router\global-router.sh') 'ctk\global-router.sh' $CtkHome
+    $installedList = @()
+    foreach ($name in $GlobalCommandNames) {
+        Stage-HomeFile (Join-Path $BootRoot "global-commands\$name.md") "commands\ctk\$name.md" $CtkHome
+        $installedList += "/ctk:$name"
+    }
+    Write-Output "Global commands available (after one Claude Code restart): $($installedList -join ' ')"
+}
+function Remove-GlobalCommands([string]$CtkHome) {
+    $removed = $false
+    $routerFile = Join-Path $CtkHome 'ctk\global-router.sh'
+    if (Test-Path -LiteralPath $routerFile -PathType Leaf) { Remove-Item -LiteralPath $routerFile -Force; Write-Output "CHANGED: removed $routerFile"; $removed = $true }
+    $commandsDir = Join-Path $CtkHome 'commands\ctk'
+    foreach ($name in $GlobalCommandNames) {
+        $cmdFile = Join-Path $commandsDir "$name.md"
+        if (Test-Path -LiteralPath $cmdFile -PathType Leaf) { Remove-Item -LiteralPath $cmdFile -Force; Write-Output "CHANGED: removed $cmdFile"; $removed = $true }
+    }
+    if (Test-Path -LiteralPath $commandsDir -PathType Container) {
+        # Only removes the directory when empty, so a user file dropped
+        # alongside the CTK-owned ones is left in place and the directory survives.
+        if (@(Get-ChildItem -LiteralPath $commandsDir -Force).Count -eq 0) { Remove-Item -LiteralPath $commandsDir -Force }
+    }
+    if (-not $removed) { Write-Output "SKIP: no CTK global commands found under $commandsDir" }
 }
 # Set-StrictMode -Version Latest throws on member-enumeration (bare `.Name`)
 # over a collection that turns out to be empty, and on accessing a property
@@ -582,7 +635,7 @@ function Invoke-Bootstrap {
     $ctkHome = Get-CtkHomeDir
     $regFile = Join-Path $ctkHome 'ctk\registration.txt'
     $settingsFile = Join-Path $ctkHome 'settings.json'
-    if ($DryRun) { Write-Output "DRY-RUN: register CTK root $bootRoot in $regFile"; Write-Output "DRY-RUN: install SessionStart router in $settingsFile"; return }
+    if ($DryRun) { Write-Output "DRY-RUN: register CTK root $bootRoot in $regFile"; Write-Output "DRY-RUN: install SessionStart router in $settingsFile"; Write-Output "DRY-RUN: install global commands in $(Join-Path $ctkHome 'commands\ctk')\ ($($GlobalCommandNames -join ' '))"; return }
     Confirm-Mutation "Register CTK root $bootRoot and install the global SessionStart router?"
     New-Item -ItemType Directory -Force -Path (Join-Path $ctkHome 'ctk') | Out-Null
     $regBackup = $null
@@ -601,14 +654,15 @@ function Invoke-Bootstrap {
     [IO.File]::WriteAllLines($regFile, [string[]]$lines, [Text.UTF8Encoding]::new($false))
     if ($regBackup) { Write-Output "CHANGED: registered CTK root $bootRoot in $regFile (backup: $regBackup)" } else { Write-Output "CHANGED: registered CTK root $bootRoot in $regFile" }
     if ($settingsBackup) { Write-Output "CHANGED: installed global SessionStart router in $settingsFile (backup: $settingsBackup)" } else { Write-Output "CHANGED: installed global SessionStart router in $settingsFile" }
-    Write-Output 'Setup complete. Restart or open Claude Code in any project to use CTK automatically.'
+    Install-GlobalCommands $bootRoot $ctkHome
+    Write-Output 'Setup complete. Restart Claude Code once to use the /ctk:* commands and automatic project sync in any project.'
 }
 function Invoke-Disable {
     $ctkHome = Get-CtkHomeDir
     $regFile = Join-Path $ctkHome 'ctk\registration.txt'
     $settingsFile = Join-Path $ctkHome 'settings.json'
-    if ($DryRun) { Write-Output "DRY-RUN: remove CTK registration $regFile"; Write-Output "DRY-RUN: remove CTK SessionStart router from $settingsFile"; return }
-    Confirm-Mutation 'Disable CTK global session sync (remove machine registration and router hook)?'
+    if ($DryRun) { Write-Output "DRY-RUN: remove CTK registration $regFile"; Write-Output "DRY-RUN: remove CTK SessionStart router from $settingsFile"; Write-Output "DRY-RUN: remove CTK global commands from $(Join-Path $ctkHome 'commands\ctk')\ and $(Join-Path $ctkHome 'ctk\global-router.sh')"; return }
+    Confirm-Mutation 'Disable CTK global session sync (remove machine registration, router hook, and global commands)?'
     $hasHook = (Test-Path -LiteralPath $settingsFile -PathType Leaf) -and (Select-String -LiteralPath $settingsFile -Pattern 'session-sync-router' -Quiet)
     if ((Test-Path -LiteralPath $settingsFile -PathType Leaf) -and -not $hasHook) {
         Write-Output "SKIP: no CTK router hook found in $settingsFile"
@@ -625,6 +679,7 @@ function Invoke-Disable {
     } else {
         Write-Output "SKIP: no CTK registration found at $regFile"
     }
+    Remove-GlobalCommands $ctkHome
 }
 
 $argList = New-Object System.Collections.Generic.List[string]; if ($Arguments) { $argList.AddRange([string[]]$Arguments) }
@@ -633,4 +688,14 @@ if ($Command -eq 'goal') { if ($argList.Count -eq 0) { Fail 'goal requires set, 
 function Test-OneLine([string]$Name, [string]$Value) { if ($Value -match "[`r`n]") { Fail "$Name must be one line" } }
 for ($i = 0; $i -lt $argList.Count; $i++) { switch ($argList[$i]) { '--link' { $Mode = 'link'; $ModeSet = $true }; '--embed' { $Mode = 'embed'; $ModeSet = $true }; '--global' { $GlobalTarget = $true }; '--profile' { $i++; if ($i -ge $argList.Count) { Fail '--profile requires a value' }; $Profile = $argList[$i]; $ProfileSet = $true }; '--module' { $i++; if ($i -ge $argList.Count) { Fail '--module requires a value' }; if ([string]::IsNullOrWhiteSpace($argList[$i]) -or $argList[$i] -match '[\\/]' -or $argList[$i].Contains('..')) { Fail "invalid module name: $($argList[$i])" }; $RequestedModules.Add($argList[$i]) }; '--no-modules' { $ModulesDisabled = $true }; '--session-sync' { $SessionSync = $true }; '--root' { $i++; if ($i -ge $argList.Count) { Fail '--root requires a directory' }; $BootstrapRoot = $argList[$i] }; '--auto-apply' { $AutoApply = $true }; '--target' { $i++; if ($i -ge $argList.Count) { Fail '--target requires a directory' }; $TargetDir = $argList[$i] }; '--dry-run' { $DryRun = $true }; '--yes' { $AssumeYes = $true }; '--objective' { $i++; if ($i -ge $argList.Count) { Fail '--objective requires a value' }; Test-OneLine '--objective' $argList[$i]; $GoalObjective = $argList[$i] }; '--acceptance' { $i++; if ($i -ge $argList.Count) { Fail '--acceptance requires a value' }; Test-OneLine '--acceptance' $argList[$i]; $GoalAcceptance = $argList[$i] }; '--phase' { $i++; if ($i -ge $argList.Count) { Fail '--phase requires a value' }; Test-OneLine '--phase' $argList[$i]; $GoalPhase = $argList[$i] }; '--next' { $i++; if ($i -ge $argList.Count) { Fail '--next requires a value' }; Test-OneLine '--next' $argList[$i]; $GoalNext = $argList[$i] }; '--evidence' { $i++; if ($i -ge $argList.Count) { Fail '--evidence requires a value' }; Test-OneLine '--evidence' $argList[$i]; $GoalEvidence = $argList[$i] }; '--help' { $Command = 'help' }; '-h' { $Command = 'help' }; default { Fail "unknown option: $($argList[$i])" } } }
 if ($GlobalTarget) { $TargetDir = Join-Path $HOME '.claude' }
+# A caller that passes a forward-slash path (e.g. a POSIX shell invoking this
+# script through `powershell -File`, which is exactly how the global /ctk:*
+# command router does it) leaves $TargetDir with forward slashes while
+# Join-Path (used throughout for derived paths like Get-TargetFile) always
+# normalizes to backslash. Save-Backup's prefix check then compares a
+# forward-slash prefix against a backslash path and fails closed on every
+# write. Normalizing once here, before any derived path is built, keeps the
+# rest of the script's separator-sensitive string comparisons correct
+# regardless of which slash style the caller used.
+$TargetDir = $TargetDir.Replace('/', '\')
 switch ($Command) { 'install' { Invoke-Install }; 'update' { if ($SessionSync) { Invoke-SessionSync } else { Invoke-Update } }; 'uninstall' { Invoke-Uninstall }; 'restore' { Invoke-Restore }; 'status' { Ensure-ReadTarget; $state = Get-BlockState; Write-Output "Target: $(Get-TargetFile)"; if ($state -eq 'complete') { Write-Output "Managed block: present (profile: $(Get-HeaderValue 'profile'), mode: $(Get-BlockMode), hash: $(Get-HeaderValue 'hash'))" } else { Write-Output "Managed block: $state" }; $installedProfile = Get-InstalledProfile; if ($installedProfile) { Write-Output "Installed profile: $installedProfile" } elseif ($state -eq 'complete') { Write-Output "Installed profile: $(Get-HeaderValue 'profile')" } else { Write-Output 'Installed profile: none' }; Write-Output "Staged files: $(Get-InstalledCount)" }; 'doctor' { Invoke-Doctor }; 'budget' { Ensure-ReadTarget; Invoke-BudgetReport; if (-not $BudgetPassed) { exit 1 } }; 'state' { Invoke-State }; 'goal' { Invoke-Goal }; 'bootstrap' { Invoke-Bootstrap }; 'disable' { Invoke-Disable }; 'version' { Write-Output "ctk $Version" }; 'help' { Show-Usage }; default { Fail "unknown command: $Command (run 'ctk help')" } }

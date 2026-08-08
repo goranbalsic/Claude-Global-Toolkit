@@ -27,7 +27,7 @@ CTK-managed, and only when it is safe to do so.
 & "C:\path\to\Claude-Global-Toolkit\bin\ctk.ps1" bootstrap
 ```
 
-This does two things, both reversible:
+This does three things, all reversible:
 
 1. Writes a small registration record — the toolkit's own root path, version,
    and an automation policy — to `~/.claude/ctk/registration.txt` (POSIX) or
@@ -39,12 +39,17 @@ This does two things, both reversible:
    project, which is the only way a session can react automatically without a
    terminal command — but the router itself does nothing but decide and defer;
    see [Safety](#safety) below for exactly what it is and is not allowed to do.
+3. Installs eight global Claude Code slash commands into
+   `~/.claude/commands/ctk/` (POSIX) or
+   `%USERPROFILE%\.claude\commands\ctk\` (Windows): see
+   [Global slash commands](#global-slash-commands) below.
 
-Bootstrap never touches `ctk` on `PATH`; the router always calls the registered
-script by its recorded absolute path. It is idempotent (running it again after
-moving the checkout just re-registers the new location) and accepts `--yes` for
-non-interactive use, `--dry-run` to preview, and `--auto-apply` to opt into
-skipping even the first-install approval prompt (off by default).
+Bootstrap never touches `ctk` on `PATH`; the router and the global commands
+always call the registered script by its recorded absolute path. It is
+idempotent (running it again after moving the checkout just re-registers the
+new location and re-copies unchanged command files as a no-op) and accepts
+`--yes` for non-interactive use, `--dry-run` to preview, and `--auto-apply` to
+opt into skipping even the first-install approval prompt (off by default).
 
 To reverse it:
 
@@ -53,8 +58,47 @@ ctk disable        # POSIX
 ctk.ps1 disable    # Windows
 ```
 
-This removes only the registration record and the one hook entry it added.
-Anything else in `~/.claude/settings.json` is left exactly as it was.
+This removes only the registration record, the one hook entry bootstrap
+added, and the eight global command files (plus their small internal router
+script) bootstrap installed. Anything else in `~/.claude/settings.json` or
+`~/.claude/commands/` — including any command you or another tool placed
+there yourself, even inside the same `commands/ctk/` directory — is left
+exactly as it was.
+
+## Global slash commands
+
+Bootstrap installs eight commands so CTK is driven entirely from inside
+Claude Code, never from a terminal:
+
+| Command | Does |
+|---|---|
+| `/ctk:install` | Detects the current project and, after your approval in chat, installs CTK into it. |
+| `/ctk:update` | After your approval, refreshes the CTK-managed files already installed in the current project. |
+| `/ctk:doctor` | Read-only. Diagnoses the current project's CTK install: drift, orphaned markers, budget, staged-asset integrity. |
+| `/ctk:status` | Read-only. Compact summary: registered CTK source, and the current project's managed-block/profile/staged-file state. |
+| `/ctk:resume` | Reports the bounded resume point (branch, changed files, last checkpoint, next action) from `STATE.md` and git. |
+| `/ctk:checkpoint` | Appends one bounded, dated line to the project's `STATE.md` through `ctk state add`. |
+| `/ctk:goal` | Sets, shows, or transitions the single bounded active goal through `ctk goal`. |
+| `/ctk:refine` | Proposes one reviewable improvement to a project-local skill or routing rule; edits only after approval. |
+
+Each one is a **thin router**: at run time it reads the CTK root recorded in
+`registration.txt`, then calls the real `ctk` CLI at that absolute path
+(`bin/ctk.ps1` through a process-only `powershell -ExecutionPolicy Bypass` on
+Windows, `bin/ctk` through `sh` everywhere else) via one shared helper script,
+`global-router.sh`, that bootstrap also installs next to the registration
+file. None of the eight ever loads CTK's core instructions, skills, or
+`STATE.md` content just because the command ran — only the specific project
+data the command's own task needs. `/ctk:install`, `/ctk:update`,
+`/ctk:doctor`, and `/ctk:status` work correctly in a brand-new project with
+zero project-local CTK files; the other four assume a CTK-managed project (or,
+for `/ctk:resume`, just a git repository) but never require any file under
+`$CLAUDE_PROJECT_DIR/bin/`.
+
+A project that already has CTK installed also has its own project-local
+`.claude/commands/ctk/*.md` copies, staged there for portability — so the
+toolkit still works if you hand the project to someone without a bootstrapped
+machine. Behavior is equivalent whichever copy Claude Code resolves for a
+given session, since both ultimately call the same `ctk` CLI.
 
 ## Ordinary use after bootstrap
 
@@ -135,7 +179,11 @@ recognized project without asking each time.
 ## Commands referenced here
 
 `ctk bootstrap`, `ctk disable`, `ctk install`, `ctk update --session-sync`,
-`ctk doctor` — all in `bin/ctk` / `bin/ctk.ps1`. In Claude Code itself, nothing
-changes: `/ctk:resume`, `/ctk:checkpoint`, `/ctk:goal`, `/ctk:refine`, and the
-rest of the `/ctk:*` commands work the same as before, once a project has been
-synchronized.
+`ctk doctor` — all in `bin/ctk` / `bin/ctk.ps1`. The global slash-command
+templates bootstrap installs live in `global-commands/*.md`; the shared
+resolver they route through is `router/global-router.sh`. In Claude Code
+itself, `/ctk:resume`, `/ctk:checkpoint`, `/ctk:goal`, `/ctk:refine`,
+`/ctk:install`, `/ctk:update`, `/ctk:doctor`, and `/ctk:status` all work the
+same way whether they came from the global install (available immediately
+after bootstrap, in any project) or a project-local install (available once
+that project has been synchronized).

@@ -6,8 +6,8 @@ argument-hint: "[profile: minimal|standard|full]"
 
 Install CTK into the current project: `$ARGUMENTS`.
 
-!`sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" status --target "$CLAUDE_PROJECT_DIR" 2>&1 || true`
-!`sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" detect-profile --target "$CLAUDE_PROJECT_DIR" 2>&1 || true`
+!`sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" status --target "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>&1 || true`
+!`sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" detect-profile --target "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>&1 || true`
 
 1. This is a global command. It never loads CTK's core instructions, skills,
    state, or other project files just because it ran; it only resolves the
@@ -25,7 +25,7 @@ Install CTK into the current project: `$ARGUMENTS`.
    profile):
 
    ```sh
-   sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" install --profile <profile> --target "$CLAUDE_PROJECT_DIR" --yes
+   sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" install --profile <profile> --target "${CLAUDE_PROJECT_DIR:-$(pwd)}" --yes
    ```
 
 6. Report the command's own CHANGED/SKIP output compactly. Never claim CTK

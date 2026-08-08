@@ -5,7 +5,7 @@ allowed-tools: Bash
 
 Diagnose CTK in the current project.
 
-!`sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" doctor --target "$CLAUDE_PROJECT_DIR" 2>&1`
+!`sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" doctor --target "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>&1`
 
 1. This is a global command. It never loads CTK's core instructions, skills,
    state, or other project files just because it ran; it only resolves the

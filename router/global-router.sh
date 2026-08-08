@@ -94,6 +94,22 @@ if [ "${1:-}" = 'detect-profile' ]; then
     exit 0
 fi
 
+# A caller-side blank (most commonly an unset $CLAUDE_PROJECT_DIR expanding
+# to an empty quoted argument in a global command template) must never reach
+# ctk.ps1/bin ctk as a bare `--target` value: on Windows, PowerShell's
+# -LiteralPath parameter binding rejects empty strings with a raw
+# ParameterBindingValidationException before the CLI's own Fail() ever runs,
+# producing a confusing low-level error instead of a clear one. Validate
+# here, once, for every command this router forwards.
+prev=''
+for arg in "$@"; do
+    if [ "$prev" = '--target' ] && [ -z "$arg" ]; then
+        printf '%s\n' "CTK: --target resolved to an empty value (is \$CLAUDE_PROJECT_DIR set in this shell?); refusing to invoke ctk with an empty target." >&2
+        exit 1
+    fi
+    prev=$arg
+done
+
 if is_windows; then
     exec powershell -NoProfile -ExecutionPolicy Bypass -File "$ctk_script" "$@"
 else

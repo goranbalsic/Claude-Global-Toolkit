@@ -24,7 +24,7 @@ Handle the goal request: `$ARGUMENTS`.
    files exist:
 
    ```sh
-   sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" goal <verb> [--objective '...'] [--acceptance '...'] [--phase '...'] [--next '...'] [--evidence '...'] --target "$CLAUDE_PROJECT_DIR" --yes
+   sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" goal <verb> [--objective '...'] [--acceptance '...'] [--phase '...'] [--next '...'] [--evidence '...'] --target "${CLAUDE_PROJECT_DIR:-$(pwd)}" --yes
    ```
 
    If this fails because CTK is not bootstrapped, or CTK is not installed in

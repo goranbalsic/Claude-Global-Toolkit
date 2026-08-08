@@ -207,12 +207,14 @@ while [ "$#" -gt 0 ]; do
         --root)
             shift
             [ "$#" -gt 0 ] || die "--root requires a directory"
+            [ -n "$1" ] || die "--root requires a non-empty directory"
             BOOTSTRAP_ROOT=$1
             ;;
         --auto-apply) AUTO_APPLY=true ;;
         --target)
             shift
             [ "$#" -gt 0 ] || die "--target requires a directory"
+            [ -n "$1" ] || die "--target requires a non-empty directory"
             TARGET_DIR=$1
             ;;
         --dry-run) DRY_RUN=1 ;;

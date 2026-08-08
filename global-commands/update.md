@@ -5,7 +5,7 @@ allowed-tools: Bash
 
 Update CTK in the current project: `$ARGUMENTS`.
 
-!`sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" status --target "$CLAUDE_PROJECT_DIR" 2>&1 || true`
+!`sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" status --target "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>&1 || true`
 
 1. This is a global command. It never loads CTK's core instructions, skills,
    state, or other project files just because it ran; it only resolves the
@@ -23,7 +23,7 @@ Update CTK in the current project: `$ARGUMENTS`.
 5. Only after explicit approval, run exactly:
 
    ```sh
-   sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" update --target "$CLAUDE_PROJECT_DIR" --yes
+   sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" update --target "${CLAUDE_PROJECT_DIR:-$(pwd)}" --yes
    ```
 
 6. Report the command's own CHANGED/SKIP/KEPT output compactly. Never claim

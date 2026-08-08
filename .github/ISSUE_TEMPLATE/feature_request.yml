@@ -1,0 +1,50 @@
+name: Feature request
+description: Propose a command, agent, skill, or module.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The always-loaded surface is capped at 1,200 tokens for the core and 400
+        for state, enforced in CI. Proposals that fit in a command, skill, or
+        module cost nothing until invoked and are much more likely to be accepted
+        than proposals that need room in the core.
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Where would this live?
+      options:
+        - Slash command (.claude/commands)
+        - Subagent (.claude/agents)
+        - Skill (.claude/skills)
+        - Module (modules/)
+        - CLI subcommand (bin/ctk)
+        - Core rules (needs budget justification)
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What goes wrong today, concretely. Please avoid describing the solution here.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: What would it do, what would it run, and what would it report?
+    validations:
+      required: true
+  - type: textarea
+    id: cost
+    attributes:
+      label: Token cost
+      description: >
+        Roughly how much would this add to the always-loaded surface? Zero is the
+        expected answer for anything on-demand.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered

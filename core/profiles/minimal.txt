@@ -1,0 +1,2 @@
+# ctk profile manifest: minimal
+# The core is injected into CLAUDE.md; no target assets are staged.

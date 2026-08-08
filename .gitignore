@@ -12,3 +12,5 @@ desktop.ini
 
 # Local scratch, never committed
 *.tmp
+.ctk-backup/
+.claude/ctk/

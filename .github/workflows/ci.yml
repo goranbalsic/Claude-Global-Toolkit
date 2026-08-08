@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  posix:
+    name: tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make scripts executable
+        run: chmod +x bin/ctk tests/run.sh hooks/*.sh modules/*/scripts/*.sh || true
+
+      - name: Token budget
+        # The always-loaded surface is a build constraint, not a guideline.
+        # A breach here is the v2 regression this project exists to prevent.
+        run: ./bin/ctk budget
+
+      - name: Test suite
+        run: sh tests/run.sh
+
+      - name: ctk doctor (self-check)
+        run: ./bin/ctk doctor || true
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+      - name: Lint POSIX sh
+        run: |
+          set -eu
+          files="$(find bin hooks modules -type f \( -name 'ctk' -o -name '*.sh' \) 2>/dev/null || true)"
+          if [ -z "$files" ]; then echo "no shell files found"; exit 1; fi
+          echo "$files"
+          # shellcheck disable=SC2086
+          shellcheck -s sh $files
+
+  manifests:
+    name: manifests and frontmatter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install PyYAML
+        run: python -m pip install --quiet pyyaml
+      - name: Validate settings.json
+        run: python -m json.tool .claude/settings.json > /dev/null
+      - name: Validate YAML frontmatter in commands, agents, and skills
+        run: |
+          python - <<'PY'
+          import pathlib, sys, yaml
+          bad = []
+          roots = [".claude/commands", ".claude/agents", ".claude/skills", "modules"]
+          for root in roots:
+              for p in pathlib.Path(root).rglob("*.md"):
+                  text = p.read_text(encoding="utf-8")
+                  if not text.startswith("---"):
+                      continue
+                  parts = text.split("---", 2)
+                  if len(parts) < 3:
+                      bad.append((p, "unterminated frontmatter"))
+                      continue
+                  try:
+                      meta = yaml.safe_load(parts[1])
+                  except yaml.YAMLError as e:
+                      bad.append((p, f"invalid YAML: {e}"))
+                      continue
+                  if not isinstance(meta, dict) or not meta.get("description"):
+                      bad.append((p, "missing 'description'"))
+          for p, why in bad:
+              print(f"FAIL {p}: {why}")
+          sys.exit(1 if bad else 0)
+          PY
+
+  powershell:
+    name: ctk.ps1 (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse check
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./bin/ctk.ps1), [ref]$null, [ref]$errors) | Out-Null
+          if ($errors -and $errors.Count -gt 0) { $errors | ForEach-Object { $_.ToString() }; exit 1 }
+          Write-Host 'ctk.ps1 parses cleanly'
+      - name: Token budget via PowerShell
+        shell: pwsh
+        run: ./bin/ctk.ps1 budget

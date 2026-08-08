@@ -1,51 +1,106 @@
-# CHANGELOG.md
+# Changelog
 
-## 2.2.0 — 2026-08-07
+All notable changes to this project are documented here. This project follows
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Minor release per `HOW_TO_BUILD.md`'s versioning policy (new capability,
-no change to `GLOBAL_CLAUDE.md`'s ten rules or the install scripts'
-contract — see `reviews/UPDATE-02-FINAL-AUDIT.md`). Consolidates batches
-2–4 and the UPDATE-02/SRC-004 batch, all previously logged as
-"Unreleased" below.
+Versioning policy for this toolkit specifically:
 
-- **UPDATE-02 (SRC-003) Phases 0–5, executed with SRC-004 folded in
-  mid-batch:** Git version control adopted (D-008); real-world validation
-  gap closed via a new `checklists/adoption-validation.md` run against
-  `salary-currency-pro`, passed (D-010, D-011, user-approved); adoption
-  lifecycle completed in `HOW_TO_USE.md` §6 (drift/update/recovery/
-  removal, D-012); both open questions closed (`OPEN_QUESTIONS.md`);
-  automatic global loading via `%USERPROFILE%\.claude\CLAUDE.md` + native
-  `@import`, approved and verified in two disposable scenarios (D-013,
-  SRC-004, `HOW_TO_USE.md` §7); `scripts/health-check.ps1`/`.sh` added
-  plus an explicit versioning policy (D-014); Markdown export
-  regenerated, PDF/DOCX generated for the first time with approved
-  Pandoc/wkhtmltopdf installation (D-015). Full phase-by-phase status:
-  `reviews/UPDATE-02-FINAL-AUDIT.md`.
-- **Batch 4:** Implemented `IDEAS.md` IDEA-001 — folded SRC-002's
-  memory-system additions into this toolkit's reusable offering (six new
-  generalized templates, `HOW_TO_USE.md` §3, `DECISIONS.md` D-007).
-- **Batch 3:** Implemented SRC-002 ("General Project Memory and Decision
-  System"), reconciled against existing governance (`DECISIONS.md` D-005,
-  D-006) — new `PROJECT_CONTEXT.md`, `PROJECT_RULES.md`, `PROMPTS.md`,
-  `IDEAS.md`, `OPEN_QUESTIONS.md`, `memory/README.md`, `session_logs/`.
-- **Batch 2:** Full final audit (`reviews/FINAL_AUDIT.md`,
-  `reviews/PRINCIPAL_ENGINEER_REVIEW.md`); Claude Code `2.1.224`
-  compatibility verified; real target-repository install confirmed
-  (`DECISIONS.md` D-004); first Markdown handbook export generated.
+- **patch**: fixes and clarifications, no behaviour change
+- **minor**: new commands, agents, skills, modules, or CLI capability
+- **major**: a change to the core operating rules or to the installer contract
 
-## Unreleased
+## [3.0.0] - 2026-08-08
 
-_Nothing pending — this file's contents are moved into a dated release
-section, per `HOW_TO_BUILD.md`'s versioning policy, once a batch of work
-warrants a version bump._
+A rewrite from a documentation project into working software. Version 2 described
+how an agent should behave; version 3 implements it, measures its own cost, and can
+be removed cleanly.
 
-## 2.1.0 — 2026-08-07
+The full v2 tree is preserved as the `v2.2.0` tag and is one `git checkout v2.2.0`
+away. Nothing was lost.
 
-- Initial generation of the full reusable project structure from
-  `sources/Claude_Global_Toolkit_AIO_Master_Prompt_v2.1.pdf`: root governance
-  files, `chapters/`, `prompts/`, `templates/`, `checklists/`, `scripts/`
-  (install scripts), and scaffolding for `reviews/`, `summaries/`,
-  `exports/`.
-- Version number carried forward from the source PDF's own
-  "Toolkit Version: 2.1.0" front matter; no independent version bump applied
-  in this initial build.
+### Added
+
+- **Token budget, measured and enforced.** `ctk budget` measures the always-loaded
+  surface and exits nonzero on a breach. Caps: 1,200 tokens for the core, 400 for
+  bounded state. CI runs it on Linux, macOS, and Windows, so the v2 cost regression
+  cannot recur silently. Current measurement: 394 tokens.
+- **`bin/ctk`**, a POSIX `sh` CLI with no runtime dependencies, and `bin/ctk.ps1`
+  with an identical surface for PowerShell 5.1+. Subcommands: `install`, `update`,
+  `uninstall`, `restore`, `status`, `doctor`, `budget`, `state`, `version`, `help`.
+- **Non-destructive managed-block injection.** Installation appends a delimited
+  block; update replaces only the block body; uninstall removes only the block.
+  Content outside the markers is preserved byte for byte, which is verified by test.
+- **`ctk uninstall`.** Version 2 declined to ship an uninstaller. Staged files that
+  were modified locally are reported and kept rather than deleted.
+- **Two injection modes.** `--link` writes a single `@`-import, costing roughly
+  fifteen tokens per project and sharing one core across every repository.
+  `--embed` inlines the core for a self-contained project.
+- **Three profiles**, `minimal`, `standard`, and `full`, that stage genuinely
+  different asset sets, recorded in `.claude/ctk/installed.txt` with hashes.
+- **7 slash commands**: `resume`, `checkpoint`, `decide`, `plan`, `verify`,
+  `review`, `ship`. `verify` detects the project toolchain (Flutter, Node, Python,
+  Go, Rust, Make) and runs its real checks.
+- **4 subagents** running in isolated context windows and returning digests:
+  `investigator`, `code-reviewer`, `verifier`, `security-reviewer`.
+- **3 skills**: session continuity, evidence and uncertainty, safe changes.
+- **3 hooks**: a `SessionStart` orientation digest, `PostToolUse` formatting of only
+  the edited file, and a `PreToolUse` guard that blocks writes to keystores,
+  certificates, `.env*`, and service-account files.
+- **Bounded state with an archive.** `.claude/ctk/STATE.md` is capped and rotates
+  aged entries into `.claude/ctk/archive/`, which is never read automatically.
+- **Opt-in Flutter/Android module** with 8 commands and real scripts: `analyze`,
+  `test`, `apk`, `bundle`, `version`, `preflight`, `release`, `doctor`. Preflight
+  fails if any keystore, `key.properties`, or `.env` file is tracked by git, and no
+  script prints a secret.
+- **Automated tests** with fixtures, covering install idempotence, user-content
+  preservation, block-scoped update, uninstall behaviour, restore, dry-run,
+  profile staging, module detection, budget enforcement, and drift detection.
+- **CI** on Linux, macOS, and Windows: tests, token budget, `shellcheck -s sh`,
+  `settings.json` validation, YAML frontmatter validation, and a PowerShell parse
+  check.
+- **Open-source scaffolding**: MIT license, contribution guide, security policy
+  with a stated threat model, code of conduct, and issue templates.
+
+### Changed
+
+- The core operating rules were tightened from `GLOBAL_CLAUDE.md` into
+  `core/CLAUDE.core.md`. The substance of the ten rules is retained; padding and
+  toolkit-specific references are gone. Rule 9 now points at bounded state and
+  explicitly tells the agent not to read archives unprompted.
+- `prompts/`, `checklists/`, and `templates/` became commands, skills, and the
+  commands that write them, rather than prose to be read.
+- `chapters/` was distilled into `docs/`.
+- `DECISIONS.md` remains an append-only record but is no longer in any mandatory
+  read path. This was the largest single contributor to the v2 session cost.
+
+### Removed
+
+All of the following remain available in the `v2.2.0` tag.
+
+- `exports/`: a 428 KB PDF, a 49 KB DOCX, and a 78 KB Markdown merge. Generated
+  artifacts do not belong in a distributed repository.
+- `sources/`: 470 KB of input material, including PDFs.
+- The toolkit's own build diary, which every adopter previously had to separate from
+  the product: `session_logs/`, `summaries/`, `reviews/`, `PROJECT_STATUS.md`,
+  `ROADMAP.md`, `IDEAS.md`, `OPEN_QUESTIONS.md`, `SOURCE_REGISTER.md`,
+  `PROMPTS.md`, `PROJECT_CONTEXT.md`, `PROJECT_RULES.md`,
+  `PROJECT_CONSTITUTION.md`, `HOW_TO_BUILD.md`, and `memory/`.
+- `scripts/install.sh` and `scripts/install.ps1`, superseded by `bin/ctk`. The old
+  scripts overwrote the target's entire `CLAUDE.md`.
+- `scripts/health-check.sh` and `scripts/health-check.ps1`, superseded by
+  `ctk doctor`.
+- Hardcoded `C:\Claude-Global-Toolkit` paths in documentation.
+
+### Fixed
+
+- Installation no longer destroys project-specific instructions in a target
+  `CLAUDE.md`.
+- Updating the baseline no longer requires manually re-applying local rules.
+- Session-start cost is bounded and cannot grow without a CI failure.
+
+## [2.2.0] - 2026-08-07
+
+Preserved as the `v2.2.0` tag. The documentation-era toolkit: `GLOBAL_CLAUDE.md`
+with ten universal rules, 8 handbook chapters, 12 prompts, 10 checklists, 13
+templates, install and health-check scripts for PowerShell and POSIX shell, and the
+project's own governance and decision records.

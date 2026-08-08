@@ -1,0 +1,864 @@
+#!/bin/sh
+# ctk keeps its managed region narrow so local instructions remain authoritative.
+set -eu
+
+VERSION=3.0.0
+CORE_LIMIT=1200
+STATE_LIMIT=400
+
+SCRIPT_DIR=$(CDPATH='' ; export CDPATH; cd "$(dirname "$0")" && pwd)
+ROOT_DIR=$(CDPATH='' ; export CDPATH; cd "$SCRIPT_DIR/.." && pwd)
+CORE_FILE=$ROOT_DIR/core/CLAUDE.core.md
+
+COMMAND=${1:-help}
+if [ "$#" -gt 0 ]; then
+    shift
+fi
+
+TARGET_DIR=$(pwd)
+GLOBAL=0
+DRY_RUN=0
+ASSUME_YES=0
+MODE='link'
+MODE_SET=0
+PROFILE=standard
+PROFILE_SET=0
+MODULES_DISABLED=0
+REQUESTED_MODULES=
+STATE_ACTION=
+STATE_TEXT=
+TMP_FILE=
+STAGE_FILE=
+
+usage() {
+    cat <<'USAGE'
+Usage: ctk <command> [options]
+
+Commands:
+  install       Append the managed block and stage the selected profile.
+  update        Replace the managed block and stage the selected profile.
+  uninstall     Remove the managed block and unmodified staged assets.
+  restore       Restore the newest managed-file backup.
+  status        Show target, profile, managed-block, and staged-asset status.
+  doctor        Check block integrity, drift, budget, staged assets, and backups.
+  budget        Measure the always-loaded core and bounded state.
+  state         state show | state add "text" | state rotate
+  version       Print the toolkit version.
+  help          Print this help.
+
+Options:
+  --link                    Inject an absolute @ import (default).
+  --embed                   Inline the core into the managed block.
+  --global                  Use ~/.claude as the target directory.
+  --profile NAME            minimal, standard, or full (default: standard).
+  --module NAME             Stage a named module; may be repeated.
+  --no-modules              Do not stage detected or explicitly requested modules.
+  --target DIR              Target directory (default: current directory).
+  --dry-run                 Describe a mutating operation without writing.
+  --yes                     Do not prompt before a mutation.
+USAGE
+}
+
+die() {
+    printf '%s\n' "ERROR: $*" >&2
+    exit 1
+}
+
+hash_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    elif command -v openssl >/dev/null 2>&1; then
+        openssl dgst -sha256 "$1" | sed 's/^.*= //'
+    else
+        die "no SHA-256 tool found; install sha256sum, shasum, or openssl"
+    fi
+}
+
+hash_text() {
+    printf '%s' "$1" | hash_stdin
+}
+
+hash_stdin() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 | awk '{print $1}'
+    elif command -v openssl >/dev/null 2>&1; then
+        openssl dgst -sha256 | sed 's/^.*= //'
+    else
+        die "no SHA-256 tool found; install sha256sum, shasum, or openssl"
+    fi
+}
+
+require_core() {
+    [ -f "$CORE_FILE" ] || die "core file is missing: $CORE_FILE"
+}
+
+core_hash12() {
+    require_core
+    hash_file "$CORE_FILE" | cut -c 1-12
+}
+
+validate_profile() {
+    case $PROFILE in
+        minimal|standard|full) ;;
+        *) die "invalid profile: $PROFILE (expected minimal, standard, or full)" ;;
+    esac
+    [ -f "$ROOT_DIR/core/profiles/$PROFILE.txt" ] || die "profile manifest is missing: $PROFILE"
+}
+
+safe_relative() {
+    case $1 in
+        ''|/*|*'//'*) return 1 ;;
+    esac
+    case "/$1/" in
+        *'/../'*) return 1 ;;
+    esac
+    return 0
+}
+
+if [ "$COMMAND" = state ]; then
+    [ "$#" -gt 0 ] || die "state requires show, add, or rotate"
+    STATE_ACTION=$1
+    shift
+    case $STATE_ACTION in
+        show|rotate) ;;
+        add)
+            [ "$#" -gt 0 ] || die "state add requires one line of text"
+            STATE_TEXT=$1
+            shift
+            case $STATE_TEXT in
+                *'
+'*) die "state entries must be one line" ;;
+            esac
+            ;;
+        *) die "state requires show, add, or rotate" ;;
+    esac
+fi
+
+while [ "$#" -gt 0 ]; do
+    case $1 in
+        --link) MODE='link'; MODE_SET=1 ;;
+        --embed) MODE=embed; MODE_SET=1 ;;
+        --global) GLOBAL=1 ;;
+        --profile)
+            shift
+            [ "$#" -gt 0 ] || die "--profile requires a value"
+            PROFILE=$1
+            PROFILE_SET=1
+            ;;
+        --module)
+            shift
+            [ "$#" -gt 0 ] || die "--module requires a value"
+            case $1 in ''|*/*|*'..'*) die "invalid module name: $1" ;; esac
+            REQUESTED_MODULES=${REQUESTED_MODULES}${REQUESTED_MODULES:+\n}$1
+            ;;
+        --no-modules) MODULES_DISABLED=1 ;;
+        --target)
+            shift
+            [ "$#" -gt 0 ] || die "--target requires a directory"
+            TARGET_DIR=$1
+            ;;
+        --dry-run) DRY_RUN=1 ;;
+        --yes) ASSUME_YES=1 ;;
+        --help|-h) COMMAND=help ;;
+        *) die "unknown option: $1" ;;
+    esac
+    shift
+done
+
+if [ "$GLOBAL" -eq 1 ]; then
+    [ "${HOME:-}" ] || die "HOME is not set for --global"
+    TARGET_DIR=$HOME/.claude
+fi
+
+TARGET_FILE=$TARGET_DIR/CLAUDE.md
+BACKUP_DIR=$TARGET_DIR/.ctk-backup
+STATE_FILE=$TARGET_DIR/.claude/ctk/STATE.md
+INSTALLED_FILE=$TARGET_DIR/.claude/ctk/installed.txt
+
+ensure_target_for_read() {
+    [ -d "$TARGET_DIR" ] || die "target directory does not exist: $TARGET_DIR"
+}
+
+ensure_target_for_write() {
+    if [ ! -d "$TARGET_DIR" ] && [ "$GLOBAL" -ne 1 ]; then
+        die "target directory does not exist: $TARGET_DIR"
+    fi
+}
+
+block_counts() {
+    begin_count=$(grep -c '^<!-- ctk:begin v=' "$TARGET_FILE" 2>/dev/null || true)
+    end_count=$(grep -c '^<!-- ctk:end -->$' "$TARGET_FILE" 2>/dev/null || true)
+}
+
+block_state() {
+    if [ ! -f "$TARGET_FILE" ]; then
+        printf '%s\n' absent
+        return
+    fi
+    block_counts
+    if [ "$begin_count" -eq 0 ] && [ "$end_count" -eq 0 ]; then
+        printf '%s\n' absent
+    elif [ "$begin_count" -eq 1 ] && [ "$end_count" -eq 1 ]; then
+        begin_line=$(grep -n '^<!-- ctk:begin v=' "$TARGET_FILE" | sed -n '1s/:.*//p')
+        end_line=$(grep -n '^<!-- ctk:end -->$' "$TARGET_FILE" | sed -n '1s/:.*//p')
+        if [ "$begin_line" -lt "$end_line" ]; then printf '%s\n' complete; else printf '%s\n' orphan; fi
+    else
+        printf '%s\n' orphan
+    fi
+}
+
+header_value() {
+    awk -v wanted="$1" '
+        /^<!-- ctk:begin v=/ {
+            for (i = 1; i <= NF; i++) {
+                if ($i ~ ("^" wanted "=")) {
+                    sub("^" wanted "=", "", $i)
+                    print $i
+                    exit
+                }
+            }
+        }' "$TARGET_FILE"
+}
+
+block_mode() {
+    awk '
+        /^<!-- ctk:begin v=/ { inside = 1; next }
+        /^<!-- ctk:end -->$/ { exit }
+        inside { if ($0 ~ /^@\//) print "link"; else print "embed"; exit }
+    ' "$TARGET_FILE"
+}
+
+confirm_mutation() {
+    if [ "$ASSUME_YES" -eq 1 ]; then return 0; fi
+    if [ -t 0 ]; then
+        printf '%s' "$1 [y/N]: "
+        IFS= read -r answer || return 1
+        case $answer in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+    fi
+    die "non-interactive mutation requires --yes"
+}
+
+# The common backup helper is used for the managed block and all staged files.
+backup_target() {
+    backup_source=$1
+    case $backup_source in
+        "$TARGET_DIR"/*) backup_relative=${backup_source#"$TARGET_DIR"/} ;;
+        *) die "backup path is outside target: $backup_source" ;;
+    esac
+    safe_relative "$backup_relative" || die "unsafe backup path: $backup_relative"
+    mkdir -p "$BACKUP_DIR/$(dirname "$backup_relative")"
+    backup_stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    backup=$BACKUP_DIR/$backup_relative.$backup_stamp
+    backup_n=1
+    while [ -e "$backup" ]; do
+        backup=$BACKUP_DIR/$backup_relative.$backup_stamp-$backup_n
+        backup_n=$((backup_n + 1))
+    done
+    if [ -f "$backup_source" ]; then cp "$backup_source" "$backup"; else : > "$backup"; fi
+    printf '%s\n' "$backup"
+}
+
+render_block() {
+    printf '%s\n' "<!-- ctk:begin v=$VERSION profile=$PROFILE hash=$(core_hash12) -->"
+    if [ "$MODE" = link ]; then
+        printf '@%s\n' "$CORE_FILE"
+    else
+        cat "$CORE_FILE"
+        last=$(tail -c 1 "$CORE_FILE" 2>/dev/null || true)
+        [ -z "$last" ] || printf '\n'
+    fi
+    printf '%s\n' '<!-- ctk:end -->'
+}
+
+tmp_file() { printf '%s\n' "$TARGET_DIR/.ctk-tmp.$$"; }
+
+remove_tmp() {
+    [ -z "$TMP_FILE" ] || rm -f "$TMP_FILE"
+    [ -z "$STAGE_FILE" ] || rm -f "$STAGE_FILE" "$STAGE_FILE.new"
+}
+trap 'remove_tmp' 0 HUP INT TERM
+
+choose_existing_settings() {
+    if [ "$(block_state)" = complete ]; then
+        if [ "$PROFILE_SET" -eq 0 ]; then
+            existing_profile=$(header_value profile)
+            [ -z "$existing_profile" ] || PROFILE=$existing_profile
+        fi
+        if [ "$MODE_SET" -eq 0 ]; then
+            existing_mode=$(block_mode)
+            [ -z "$existing_mode" ] || MODE=$existing_mode
+        fi
+    fi
+    validate_profile
+}
+
+manifest_entries() {
+    awk '
+        /^[[:space:]]*$/ || /^[[:space:]]*#/ { next }
+        {
+            source = $1
+            $1 = ""
+            sub(/^[[:space:]]+/, "")
+            if (source == "" || $0 == "") { exit 1 }
+            print source "\t" $0
+        }
+    ' "$ROOT_DIR/core/profiles/$PROFILE.txt"
+}
+
+profile_assets_check() {
+    profile_failure=0
+    manifest_entries | while IFS="$(printf '\t')" read -r asset destination; do
+        if ! safe_relative "$destination"; then
+            printf '%s\n' "FAIL: profile destination is unsafe: $destination"
+            exit 1
+        fi
+        case $asset in
+            @state) printf '%s\n' "PASS: referenced generated asset exists: $asset" ;;
+            */)
+                if [ -d "$ROOT_DIR/${asset%/}" ]; then
+                    printf '%s\n' "PASS: referenced asset exists: $asset"
+                else
+                    printf '%s\n' "FAIL: referenced asset is missing: $asset"
+                    exit 1
+                fi
+                ;;
+            *)
+                if [ -f "$ROOT_DIR/$asset" ]; then
+                    printf '%s\n' "PASS: referenced asset exists: $asset"
+                else
+                    printf '%s\n' "FAIL: referenced asset is missing: $asset"
+                    exit 1
+                fi
+                ;;
+        esac
+    done || profile_failure=1
+    return "$profile_failure"
+}
+
+prepare_stage_records() {
+    STAGE_FILE=$TARGET_DIR/.ctk-stage-records.$$
+    : > "$STAGE_FILE"
+    if [ -f "$INSTALLED_FILE" ]; then
+        awk -F '\t' 'NF == 2 && $1 !~ /^#/ { print $1 "\t" $2 }' "$INSTALLED_FILE" >> "$STAGE_FILE"
+    fi
+}
+
+record_staged_file() {
+    staged_path=$1
+    staged_hash=$2
+    awk -F '\t' -v path="$staged_path" '$1 != path { print $1 "\t" $2 }' "$STAGE_FILE" > "$STAGE_FILE.new"
+    mv "$STAGE_FILE.new" "$STAGE_FILE"
+    printf '%s\t%s\n' "$staged_path" "$staged_hash" >> "$STAGE_FILE"
+}
+
+write_installed_manifest() {
+    if [ ! -s "$STAGE_FILE" ]; then
+        rm -f "$INSTALLED_FILE"
+        return
+    fi
+    mkdir -p "$(dirname "$INSTALLED_FILE")"
+    {
+        printf '%s\n' '# ctk installed assets'
+        printf 'version\t%s\n' "$VERSION"
+        printf 'profile\t%s\n' "$PROFILE"
+        cat "$STAGE_FILE"
+    } > "$INSTALLED_FILE"
+}
+
+stage_one_file() {
+    source_file=$1
+    relative_destination=$2
+    safe_relative "$relative_destination" || die "unsafe staged destination: $relative_destination"
+    destination=$TARGET_DIR/$relative_destination
+    if [ -e "$destination" ]; then
+        [ -f "$destination" ] || die "cannot stage file over non-file: $destination"
+        if cmp -s "$source_file" "$destination"; then
+            [ "$DRY_RUN" -eq 0 ] && record_staged_file "$relative_destination" "$(hash_file "$destination")"
+            if [ "$DRY_RUN" -eq 1 ]; then printf '%s\n' "DRY-RUN: SKIP: identical staged file: $relative_destination"; else printf '%s\n' "SKIP: identical staged file: $relative_destination"; fi
+            return
+        fi
+        if [ "$DRY_RUN" -eq 1 ]; then
+            printf '%s\n' "DRY-RUN: BACKUP: $relative_destination -> .ctk-backup/$relative_destination.<timestamp>"
+            printf '%s\n' "DRY-RUN: STAGE: $source_file -> $relative_destination"
+            return
+        fi
+        staged_backup=$(backup_target "$destination")
+        mkdir -p "$(dirname "$destination")"
+        cp "$source_file" "$destination"
+        record_staged_file "$relative_destination" "$(hash_file "$destination")"
+        printf '%s\n' "CHANGED: staged $relative_destination (backup: $staged_backup)"
+    else
+        if [ "$DRY_RUN" -eq 1 ]; then
+            printf '%s\n' "DRY-RUN: STAGE: $source_file -> $relative_destination"
+            return
+        fi
+        mkdir -p "$(dirname "$destination")"
+        cp "$source_file" "$destination"
+        record_staged_file "$relative_destination" "$(hash_file "$destination")"
+        printf '%s\n' "CHANGED: staged $relative_destination"
+    fi
+}
+
+stage_state_file() {
+    state_contents='# ctk bounded session state'
+    state_hash=$(printf '%s\n' "$state_contents" | hash_stdin)
+    if [ -e "$STATE_FILE" ]; then
+        [ -f "$STATE_FILE" ] || die "cannot stage state over non-file: $STATE_FILE"
+        if [ "$(hash_file "$STATE_FILE")" = "$state_hash" ]; then
+            [ "$DRY_RUN" -eq 0 ] && record_staged_file '.claude/ctk/STATE.md' "$state_hash"
+            if [ "$DRY_RUN" -eq 1 ]; then printf '%s\n' 'DRY-RUN: SKIP: identical staged file: .claude/ctk/STATE.md'; else printf '%s\n' 'SKIP: identical staged file: .claude/ctk/STATE.md'; fi
+            return
+        fi
+        if [ "$DRY_RUN" -eq 1 ]; then
+            printf '%s\n' 'DRY-RUN: BACKUP: .claude/ctk/STATE.md -> .ctk-backup/.claude/ctk/STATE.md.<timestamp>'
+            printf '%s\n' 'DRY-RUN: STAGE: @state -> .claude/ctk/STATE.md'
+            return
+        fi
+        staged_backup=$(backup_target "$STATE_FILE")
+        printf '%s\n' "$state_contents" > "$STATE_FILE"
+        record_staged_file '.claude/ctk/STATE.md' "$state_hash"
+        printf '%s\n' "CHANGED: staged .claude/ctk/STATE.md (backup: $staged_backup)"
+    else
+        if [ "$DRY_RUN" -eq 1 ]; then printf '%s\n' 'DRY-RUN: STAGE: @state -> .claude/ctk/STATE.md'; return; fi
+        mkdir -p "$(dirname "$STATE_FILE")"
+        printf '%s\n' "$state_contents" > "$STATE_FILE"
+        record_staged_file '.claude/ctk/STATE.md' "$state_hash"
+        printf '%s\n' 'CHANGED: staged .claude/ctk/STATE.md'
+    fi
+}
+
+stage_directory() {
+    source_directory=$1
+    destination_directory=$2
+    [ -d "$source_directory" ] || die "profile source directory is missing: $source_directory"
+    find "$source_directory" -type f -print | while IFS= read -r source_file; do
+        relative_file=${source_file#"$source_directory"/}
+        stage_one_file "$source_file" "$destination_directory/$relative_file"
+    done
+}
+
+stage_profile_assets() {
+    manifest_entries | while IFS="$(printf '\t')" read -r source_entry destination_entry; do
+        case $source_entry in
+            @state) [ "$destination_entry" = '.claude/ctk/STATE.md' ] || die '@state must target .claude/ctk/STATE.md'; stage_state_file ;;
+            */)
+                case $destination_entry in */) ;; *) die "directory destination must end in /: $destination_entry" ;; esac
+                stage_directory "$ROOT_DIR/${source_entry%/}" "${destination_entry%/}"
+                ;;
+            *) stage_one_file "$ROOT_DIR/$source_entry" "$destination_entry" ;;
+        esac
+    done
+}
+
+# The declaration is YAML, so the value may be quoted. Strip one layer of
+# surrounding double or single quotes and trailing whitespace before matching.
+module_detect_rule() {
+    awk '
+        /^detect:[[:space:]]*/ {
+            sub(/^detect:[[:space:]]*/, "")
+            sub(/[[:space:]]+$/, "")
+            if (substr($0, 1, 1) == "\"" && substr($0, length($0), 1) == "\"") {
+                $0 = substr($0, 2, length($0) - 2)
+            } else if (substr($0, 1, 1) == "'\''" && substr($0, length($0), 1) == "'\''") {
+                $0 = substr($0, 2, length($0) - 2)
+            }
+            print
+            exit
+        }
+    ' "$1/module.md"
+}
+
+module_applies() {
+    module_directory=$1
+    detection_rule=$(module_detect_rule "$module_directory")
+    [ -n "$detection_rule" ] || return 1
+    case $detection_rule in
+        *' contains '*)
+            detection_file=${detection_rule%% contains *}
+            detection_text=${detection_rule#* contains }
+            safe_relative "$detection_file" || return 1
+            [ -f "$TARGET_DIR/$detection_file" ] && grep -F "$detection_text" "$TARGET_DIR/$detection_file" >/dev/null 2>&1
+            ;;
+        *' exists')
+            detection_file=${detection_rule% exists}
+            safe_relative "$detection_file" || return 1
+            [ -e "$TARGET_DIR/$detection_file" ]
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+module_supports_profile() {
+    grep -Eq '^[[:space:]]*-[[:space:]]*'"$PROFILE"'[[:space:]]*$' "$1/module.md"
+}
+
+selected_modules() {
+    [ "$MODULES_DISABLED" -eq 1 ] && return
+    if [ "$PROFILE" = full ]; then
+        for module_directory in "$ROOT_DIR"/modules/*; do
+            if [ ! -d "$module_directory" ] || [ ! -f "$module_directory/module.md" ]; then
+                continue
+            fi
+            if module_supports_profile "$module_directory" && module_applies "$module_directory"; then
+                basename "$module_directory"
+            fi
+        done
+    fi
+    if [ -n "$REQUESTED_MODULES" ]; then
+        printf '%b\n' "$REQUESTED_MODULES" | while IFS= read -r module_name; do
+            [ -n "$module_name" ] || continue
+            [ -f "$ROOT_DIR/modules/$module_name/module.md" ] || die "unknown module: $module_name"
+            printf '%s\n' "$module_name"
+        done
+    fi
+}
+
+stage_modules() {
+    selected_modules | sort -u | while IFS= read -r module_name; do
+        [ -n "$module_name" ] || continue
+        module_directory=$ROOT_DIR/modules/$module_name
+        if [ -d "$module_directory/commands" ]; then
+            stage_directory "$module_directory/commands" ".claude/commands/$module_name"
+        fi
+        if [ -d "$module_directory/scripts" ]; then
+            stage_directory "$module_directory/scripts" ".claude/ctk/modules/$module_name/scripts"
+        fi
+    done
+}
+
+stage_selected_profile() {
+    if [ "$DRY_RUN" -eq 0 ]; then prepare_stage_records; fi
+    stage_profile_assets
+    stage_modules
+    if [ "$DRY_RUN" -eq 0 ]; then write_installed_manifest; fi
+}
+
+install_cmd() {
+    ensure_target_for_write
+    choose_existing_settings
+    current=$(block_state)
+    case $current in orphan) die "orphaned ctk markers in $TARGET_FILE; repair them before install" ;; esac
+    if [ "$DRY_RUN" -eq 1 ]; then
+        if [ "$current" = complete ]; then printf '%s\n' "DRY-RUN: SKIP: managed block already present in $TARGET_FILE"; else printf '%s\n' "DRY-RUN: install managed block in $TARGET_FILE"; fi
+        stage_selected_profile
+        return
+    fi
+    confirm_mutation "Install profile $PROFILE in $TARGET_DIR?" || die "installation cancelled"
+    [ -d "$TARGET_DIR" ] || mkdir -p "$TARGET_DIR"
+    if [ "$current" = absent ]; then
+        backup=$(backup_target "$TARGET_FILE")
+        TMP_FILE=$(tmp_file)
+        if [ -f "$TARGET_FILE" ]; then
+            cat "$TARGET_FILE" > "$TMP_FILE"
+            if [ -s "$TARGET_FILE" ]; then
+                last=$(tail -c 1 "$TARGET_FILE" 2>/dev/null || true)
+                [ -z "$last" ] || printf '\n' >> "$TMP_FILE"
+            fi
+            render_block >> "$TMP_FILE"
+        else
+            render_block > "$TMP_FILE"
+        fi
+        mv "$TMP_FILE" "$TARGET_FILE"
+        TMP_FILE=
+        printf '%s\n' "CHANGED: installed managed block in $TARGET_FILE (backup: $backup)"
+    else
+        printf '%s\n' "SKIP: managed block already present in $TARGET_FILE"
+    fi
+    stage_selected_profile
+}
+
+update_cmd() {
+    ensure_target_for_write
+    [ -f "$TARGET_FILE" ] || die "no target file to update: $TARGET_FILE"
+    [ "$(block_state)" = complete ] || die "managed block is $(block_state); update requires one complete block"
+    choose_existing_settings
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '%s\n' "DRY-RUN: update managed block in $TARGET_FILE"
+        stage_selected_profile
+        return
+    fi
+    confirm_mutation "Update managed block in $TARGET_FILE?" || die "update cancelled"
+    backup=$(backup_target "$TARGET_FILE")
+    TMP_FILE=$(tmp_file)
+    awk '/^<!-- ctk:begin v=/ { exit } { print }' "$TARGET_FILE" > "$TMP_FILE"
+    render_block >> "$TMP_FILE"
+    awk 'seen { print } /^<!-- ctk:end -->$/ { seen = 1 }' "$TARGET_FILE" >> "$TMP_FILE"
+    mv "$TMP_FILE" "$TARGET_FILE"
+    TMP_FILE=
+    printf '%s\n' "CHANGED: updated managed block in $TARGET_FILE (backup: $backup)"
+    stage_selected_profile
+}
+
+remove_empty_parents() {
+    parent=$(dirname "$1")
+    while [ "$parent" != "$TARGET_DIR" ] && [ "$parent" != . ]; do
+        rmdir "$parent" 2>/dev/null || break
+        parent=$(dirname "$parent")
+    done
+}
+
+uninstall_staged_assets() {
+    [ -f "$INSTALLED_FILE" ] || return
+    uninstall_keep=$TARGET_DIR/.ctk-uninstall-keep.$$
+    : > "$uninstall_keep"
+    awk -F '\t' 'NF == 2 && $1 !~ /^(version|profile)$/ { print $1 "\t" $2 }' "$INSTALLED_FILE" |
+        while IFS="$(printf '\t')" read -r staged_path staged_hash; do
+            if ! safe_relative "$staged_path"; then
+                printf '%s\n' "FAIL: unsafe staged path in installed manifest: $staged_path" >&2
+                exit 1
+            fi
+            staged_target=$TARGET_DIR/$staged_path
+            if [ ! -e "$staged_target" ]; then
+                printf '%s\n' "SKIP: staged file already absent: $staged_path"
+            elif [ ! -f "$staged_target" ]; then
+                printf '%s\n' "KEPT: staged path is no longer a file: $staged_path"
+                printf '%s\t%s\n' "$staged_path" "$staged_hash" >> "$uninstall_keep"
+            elif [ "$(hash_file "$staged_target")" = "$staged_hash" ]; then
+                if [ "$DRY_RUN" -eq 1 ]; then
+                    printf '%s\n' "DRY-RUN: REMOVE: $staged_path"
+                else
+                    rm -f "$staged_target"
+                    remove_empty_parents "$staged_target"
+                    printf '%s\n' "CHANGED: removed staged file: $staged_path"
+                fi
+            else
+                printf '%s\n' "KEPT: locally modified staged file: $staged_path"
+                printf '%s\t%s\n' "$staged_path" "$staged_hash" >> "$uninstall_keep"
+            fi
+        done
+    if [ "$DRY_RUN" -eq 1 ]; then
+        rm -f "$uninstall_keep"
+        return
+    fi
+    if [ -s "$uninstall_keep" ]; then
+        {
+            printf '%s\n' '# ctk installed assets'
+            printf 'version\t%s\n' "$VERSION"
+            printf 'profile\t%s\n' "$PROFILE"
+            cat "$uninstall_keep"
+        } > "$INSTALLED_FILE"
+    else
+        rm -f "$INSTALLED_FILE"
+        remove_empty_parents "$INSTALLED_FILE"
+    fi
+    rm -f "$uninstall_keep"
+}
+
+uninstall_cmd() {
+    ensure_target_for_write
+    [ -f "$TARGET_FILE" ] || die "no target file to uninstall: $TARGET_FILE"
+    [ "$(block_state)" = complete ] || die "managed block is $(block_state); uninstall requires one complete block"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '%s\n' "DRY-RUN: uninstall managed block from $TARGET_FILE"
+        uninstall_staged_assets
+        return
+    fi
+    confirm_mutation "Remove managed block and staged assets from $TARGET_DIR?" || die "uninstall cancelled"
+    backup=$(backup_target "$TARGET_FILE")
+    TMP_FILE=$(tmp_file)
+    awk '
+        /^<!-- ctk:begin v=/ { inside = 1; next }
+        /^<!-- ctk:end -->$/ && inside { inside = 0; next }
+        !inside { print }
+    ' "$TARGET_FILE" > "$TMP_FILE"
+    if grep -q '[^[:space:]]' "$TMP_FILE"; then
+        mv "$TMP_FILE" "$TARGET_FILE"
+        TMP_FILE=
+        printf '%s\n' "CHANGED: removed managed block from $TARGET_FILE (backup: $backup)"
+    else
+        rm -f "$TMP_FILE" "$TARGET_FILE"
+        TMP_FILE=
+        printf '%s\n' "CHANGED: removed managed block and empty target $TARGET_FILE (backup: $backup)"
+    fi
+    uninstall_staged_assets
+}
+
+latest_backup() {
+    [ -d "$BACKUP_DIR" ] || return 0
+    newest=
+    for candidate in "$BACKUP_DIR"/CLAUDE.md.*; do
+        [ -e "$candidate" ] || continue
+        newest=$candidate
+    done
+    [ -z "$newest" ] || printf '%s\n' "$newest"
+}
+
+restore_cmd() {
+    ensure_target_for_write
+    backup=$(latest_backup)
+    [ -n "$backup" ] || die "no backup found in $BACKUP_DIR"
+    if [ "$DRY_RUN" -eq 1 ]; then printf '%s\n' "DRY-RUN: restore $TARGET_FILE from $backup"; return; fi
+    confirm_mutation "Restore $TARGET_FILE from $backup?" || die "restore cancelled"
+    [ -d "$TARGET_DIR" ] || mkdir -p "$TARGET_DIR"
+    current_backup=$(backup_target "$TARGET_FILE")
+    if [ -s "$backup" ]; then cp "$backup" "$TARGET_FILE"; printf '%s\n' "CHANGED: restored $TARGET_FILE from $backup (backup: $current_backup)"; else rm -f "$TARGET_FILE"; printf '%s\n' "CHANGED: restored absent target from $backup (backup: $current_backup)"; fi
+}
+
+installed_profile() {
+    [ -f "$INSTALLED_FILE" ] || return 0
+    awk -F '\t' '$1 == "profile" { print $2; exit }' "$INSTALLED_FILE"
+}
+
+installed_count() {
+    [ -f "$INSTALLED_FILE" ] || { printf '%s\n' 0; return; }
+    awk -F '\t' 'NF == 2 && $1 !~ /^(version|profile)$/ { count++ } END { print count + 0 }' "$INSTALLED_FILE"
+}
+
+status_cmd() {
+    ensure_target_for_read
+    current=$(block_state)
+    printf '%s\n' "Target: $TARGET_FILE"
+    case $current in
+        absent) printf '%s\n' 'Managed block: absent' ;;
+        orphan) printf '%s\n' 'Managed block: orphaned' ;;
+        complete) printf '%s\n' "Managed block: present (profile: $(header_value profile), mode: $(block_mode), hash: $(header_value hash))" ;;
+    esac
+    if [ -f "$INSTALLED_FILE" ]; then
+        printf '%s\n' "Installed profile: $(installed_profile)"
+    elif [ "$current" = complete ]; then
+        printf '%s\n' "Installed profile: $(header_value profile)"
+    else
+        printf '%s\n' 'Installed profile: none'
+    fi
+    printf '%s\n' "Staged files: $(installed_count)"
+}
+
+bytes_of() { if [ -f "$1" ]; then wc -c < "$1" | tr -d ' '; else printf '%s\n' 0; fi; }
+tokens_for_bytes() { printf '%s\n' $(( ($1 + 3) / 4 )); }
+
+budget_report() {
+    require_core
+    core_bytes=$(bytes_of "$CORE_FILE")
+    core_tokens=$(tokens_for_bytes "$core_bytes")
+    state_bytes=$(bytes_of "$STATE_FILE")
+    state_tokens=$(tokens_for_bytes "$state_bytes")
+    total_bytes=$((core_bytes + state_bytes))
+    total_tokens=$((core_tokens + state_tokens))
+    result=0
+    if [ "$core_tokens" -le "$CORE_LIMIT" ]; then core_label=PASS; else core_label=FAIL; result=1; fi
+    if [ "$state_tokens" -le "$STATE_LIMIT" ]; then state_label=PASS; else state_label=FAIL; result=1; fi
+    printf '%s\n' "$core_label: core $CORE_FILE: $core_bytes bytes, $core_tokens estimated tokens (limit: $CORE_LIMIT)"
+    if [ -f "$STATE_FILE" ]; then printf '%s\n' "$state_label: state $STATE_FILE: $state_bytes bytes, $state_tokens estimated tokens (limit: $STATE_LIMIT)"; else printf '%s\n' "$state_label: state $STATE_FILE: absent, 0 bytes, 0 estimated tokens (limit: $STATE_LIMIT)"; fi
+    if [ "$result" -eq 0 ]; then total_label=PASS; else total_label=FAIL; fi
+    printf '%s\n' "$total_label: total always-loaded surface: $total_bytes bytes, $total_tokens estimated tokens"
+    return "$result"
+}
+
+budget_cmd() { ensure_target_for_read; budget_report; }
+
+doctor_installed_assets() {
+    [ -f "$INSTALLED_FILE" ] || { printf '%s\n' 'PASS: no staged assets are recorded'; return 0; }
+    doctor_failed=0
+    awk -F '\t' 'NF == 2 && $1 !~ /^(version|profile)$/ { print $1 "\t" $2 }' "$INSTALLED_FILE" |
+        (
+            asset_failed=0
+            while IFS="$(printf '\t')" read -r staged_path staged_hash; do
+                if ! safe_relative "$staged_path"; then
+                    printf '%s\n' "FAIL: unsafe staged path in installed manifest: $staged_path"
+                    asset_failed=1
+                    continue
+                fi
+                staged_target=$TARGET_DIR/$staged_path
+                if [ ! -f "$staged_target" ]; then
+                    printf '%s\n' "FAIL: staged asset is missing: $staged_path"
+                    asset_failed=1
+                elif [ "$(hash_file "$staged_target")" = "$staged_hash" ]; then
+                    printf '%s\n' "PASS: staged asset matches: $staged_path"
+                else
+                    printf '%s\n' "FAIL: staged asset was locally modified: $staged_path"
+                    asset_failed=1
+                fi
+            done
+            exit "$asset_failed"
+        ) || doctor_failed=1
+    return "$doctor_failed"
+}
+
+doctor_cmd() {
+    failures=0
+    if [ -d "$TARGET_DIR" ]; then printf '%s\n' "PASS: target directory exists: $TARGET_DIR"; else printf '%s\n' "FAIL: target directory is missing: $TARGET_DIR"; exit 1; fi
+    current=$(block_state)
+    case $current in
+        absent) printf '%s\n' 'WARN: managed block is absent'; printf '%s\n' 'PASS: no orphaned ctk markers detected' ;;
+        orphan) printf '%s\n' 'FAIL: orphaned ctk markers detected'; failures=1 ;;
+        complete)
+            printf '%s\n' 'PASS: one complete managed block is present'
+            printf '%s\n' 'PASS: no orphaned ctk markers detected'
+            recorded=$(header_value hash)
+            actual=$(core_hash12)
+            if [ "$recorded" = "$actual" ]; then printf '%s\n' "PASS: managed hash matches current core ($actual)"; else printf '%s\n' "FAIL: managed hash drift (recorded: ${recorded:-missing}, current: $actual)"; failures=1; fi
+            if [ "$PROFILE_SET" -eq 0 ]; then PROFILE=$(header_value profile); fi
+            if validate_profile && profile_assets_check; then :; else failures=1; fi
+            ;;
+    esac
+    if doctor_installed_assets; then :; else failures=1; fi
+    if budget_report; then :; else failures=1; fi
+    backup=$(latest_backup)
+    if [ -n "$backup" ]; then printf '%s\n' "PASS: backup present: $backup"; else printf '%s\n' "WARN: no backups present in $BACKUP_DIR"; fi
+    [ "$failures" -eq 0 ]
+}
+
+state_rotate() {
+    [ -f "$STATE_FILE" ] || { printf '%s\n' "SKIP: state file is absent: $STATE_FILE"; return; }
+    bytes=$(bytes_of "$STATE_FILE")
+    limit_bytes=$((STATE_LIMIT * 4))
+    if [ "$bytes" -le "$limit_bytes" ]; then printf '%s\n' "SKIP: state is within budget: $bytes bytes"; return; fi
+    if [ "$DRY_RUN" -eq 1 ]; then printf '%s\n' "DRY-RUN: rotate $STATE_FILE to the $STATE_LIMIT-token budget"; return; fi
+    state_dir=$TARGET_DIR/.claude/ctk
+    archive_dir=$state_dir/archive
+    mkdir -p "$archive_dir"
+    keep=$state_dir/.state-keep.$$
+    old=$state_dir/.state-old.$$
+    awk -v cap="$limit_bytes" -v keep="$keep" -v old="$old" '
+        { line[NR] = $0; size[NR] = length($0) + 1 }
+        END {
+            used = 0; first = NR + 1
+            for (i = NR; i >= 1; i--) { if (used + size[i] > cap) break; used += size[i]; first = i }
+            for (i = 1; i < first; i++) print line[i] > old
+            for (i = first; i <= NR; i++) print line[i] > keep
+        }
+    ' "$STATE_FILE"
+    stamp=$(date -u +%Y%m%d)
+    archive=$archive_dir/STATE-$stamp.md
+    [ ! -f "$old" ] || cat "$old" >> "$archive"
+    if [ -f "$keep" ]; then mv "$keep" "$STATE_FILE"; else : > "$STATE_FILE"; fi
+    rm -f "$old"
+    printf '%s\n' "CHANGED: rotated state into $archive"
+}
+
+state_cmd() {
+    ensure_target_for_write
+    case $STATE_ACTION in
+        show) if [ -f "$STATE_FILE" ]; then cat "$STATE_FILE"; else printf '%s\n' 'SKIP: state is absent'; fi ;;
+        add)
+            if [ "$DRY_RUN" -eq 1 ]; then printf '%s\n' "DRY-RUN: add one state entry to $STATE_FILE"; return; fi
+            confirm_mutation "Add state entry to $STATE_FILE?" || die "state update cancelled"
+            mkdir -p "$TARGET_DIR/.claude/ctk"
+            printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$STATE_TEXT" >> "$STATE_FILE"
+            printf '%s\n' "CHANGED: added state entry to $STATE_FILE"
+            state_rotate
+            ;;
+        rotate)
+            if [ "$DRY_RUN" -eq 0 ]; then confirm_mutation "Rotate bounded state in $STATE_FILE?" || die "state rotation cancelled"; fi
+            state_rotate
+            ;;
+    esac
+}
+
+case $COMMAND in
+    install) install_cmd ;;
+    update) update_cmd ;;
+    uninstall) uninstall_cmd ;;
+    restore) restore_cmd ;;
+    status) status_cmd ;;
+    doctor) doctor_cmd ;;
+    budget) budget_cmd ;;
+    state) state_cmd ;;
+    version) printf '%s\n' "ctk $VERSION" ;;
+    help) usage ;;
+    *) die "unknown command: $COMMAND (run 'ctk help')" ;;
+esac

@@ -1,0 +1,55 @@
+name: Bug report
+description: Something in the toolkit does not behave as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please run `ctk doctor` and `ctk budget` first and paste the output below.
+        If the problem involves an install, `ctk status` is also useful.
+  - type: input
+    id: version
+    attributes:
+      label: Toolkit version or commit
+      placeholder: "3.0.0, or the short SHA"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Linux, macOS, Windows (PowerShell), Windows (WSL), Other]
+    validations:
+      required: true
+  - type: input
+    id: shell
+    attributes:
+      label: Shell and version
+      placeholder: "dash 0.5.12 / zsh 5.9 / PowerShell 5.1"
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Exact commands and exact output. Redact any secrets.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `ctk doctor` and `ctk budget`
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmations
+      options:
+        - label: I reproduced this with `--dry-run` where the command supports it.
+        - label: The output above contains no secrets or credentials.
+          required: true

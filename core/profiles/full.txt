@@ -1,0 +1,8 @@
+# ctk profile manifest: full
+# Full includes standard assets plus on-demand agents and skills.
+@state  .claude/ctk/STATE.md
+.claude/commands/ctk/  .claude/commands/ctk/
+hooks/  hooks/
+.claude/settings.json  .claude/settings.json
+.claude/agents/  .claude/agents/
+.claude/skills/  .claude/skills/

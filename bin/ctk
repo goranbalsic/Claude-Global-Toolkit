@@ -2,9 +2,11 @@
 # ctk keeps its managed region narrow so local instructions remain authoritative.
 set -eu
 
-VERSION=3.0.0
+VERSION=3.1.0
 CORE_LIMIT=1200
 STATE_LIMIT=400
+GOAL_LIMIT=300
+MANIFEST_SCHEMA=1
 
 SCRIPT_DIR=$(CDPATH='' ; export CDPATH; cd "$(dirname "$0")" && pwd)
 ROOT_DIR=$(CDPATH='' ; export CDPATH; cd "$SCRIPT_DIR/.." && pwd)
@@ -27,6 +29,12 @@ MODULES_DISABLED=0
 REQUESTED_MODULES=
 STATE_ACTION=
 STATE_TEXT=
+GOAL_ACTION=
+GOAL_OBJECTIVE=
+GOAL_ACCEPTANCE=
+GOAL_PHASE=
+GOAL_NEXT=
+GOAL_EVIDENCE=
 TMP_FILE=
 STAGE_FILE=
 
@@ -43,6 +51,7 @@ Commands:
   doctor        Check block integrity, drift, budget, staged assets, and backups.
   budget        Measure the always-loaded core and bounded state.
   state         state show | state add "text" | state rotate
+  goal          goal set|show|pause|complete|cancel|clear
   version       Print the toolkit version.
   help          Print this help.
 
@@ -56,12 +65,24 @@ Options:
   --target DIR              Target directory (default: current directory).
   --dry-run                 Describe a mutating operation without writing.
   --yes                     Do not prompt before a mutation.
+  --objective TEXT          goal set: the objective (required).
+  --acceptance TEXT         goal set: the acceptance check (required).
+  --phase TEXT              goal set/pause: the current phase.
+  --next TEXT               goal set: the next verifiable action.
+  --evidence TEXT           goal complete: the test/build evidence (required).
 USAGE
 }
 
 die() {
     printf '%s\n' "ERROR: $*" >&2
     exit 1
+}
+
+require_one_line() {
+    case $2 in
+        *'
+'*) die "$1 must be one line" ;;
+    esac
 }
 
 hash_file() {
@@ -138,6 +159,16 @@ if [ "$COMMAND" = state ]; then
     esac
 fi
 
+if [ "$COMMAND" = goal ]; then
+    [ "$#" -gt 0 ] || die "goal requires set, show, pause, complete, cancel, or clear"
+    GOAL_ACTION=$1
+    shift
+    case $GOAL_ACTION in
+        set|show|pause|complete|cancel|clear) ;;
+        *) die "goal requires set, show, pause, complete, cancel, or clear" ;;
+    esac
+fi
+
 while [ "$#" -gt 0 ]; do
     case $1 in
         --link) MODE='link'; MODE_SET=1 ;;
@@ -163,6 +194,36 @@ while [ "$#" -gt 0 ]; do
             ;;
         --dry-run) DRY_RUN=1 ;;
         --yes) ASSUME_YES=1 ;;
+        --objective)
+            shift
+            [ "$#" -gt 0 ] || die "--objective requires a value"
+            require_one_line --objective "$1"
+            GOAL_OBJECTIVE=$1
+            ;;
+        --acceptance)
+            shift
+            [ "$#" -gt 0 ] || die "--acceptance requires a value"
+            require_one_line --acceptance "$1"
+            GOAL_ACCEPTANCE=$1
+            ;;
+        --phase)
+            shift
+            [ "$#" -gt 0 ] || die "--phase requires a value"
+            require_one_line --phase "$1"
+            GOAL_PHASE=$1
+            ;;
+        --next)
+            shift
+            [ "$#" -gt 0 ] || die "--next requires a value"
+            require_one_line --next "$1"
+            GOAL_NEXT=$1
+            ;;
+        --evidence)
+            shift
+            [ "$#" -gt 0 ] || die "--evidence requires a value"
+            require_one_line --evidence "$1"
+            GOAL_EVIDENCE=$1
+            ;;
         --help|-h) COMMAND=help ;;
         *) die "unknown option: $1" ;;
     esac
@@ -178,6 +239,7 @@ TARGET_FILE=$TARGET_DIR/CLAUDE.md
 BACKUP_DIR=$TARGET_DIR/.ctk-backup
 STATE_FILE=$TARGET_DIR/.claude/ctk/STATE.md
 INSTALLED_FILE=$TARGET_DIR/.claude/ctk/installed.txt
+GOAL_FILE=$TARGET_DIR/.claude/ctk/GOAL.md
 
 ensure_target_for_read() {
     [ -d "$TARGET_DIR" ] || die "target directory does not exist: $TARGET_DIR"
@@ -343,7 +405,7 @@ prepare_stage_records() {
     STAGE_FILE=$TARGET_DIR/.ctk-stage-records.$$
     : > "$STAGE_FILE"
     if [ -f "$INSTALLED_FILE" ]; then
-        awk -F '\t' 'NF == 2 && $1 !~ /^#/ { print $1 "\t" $2 }' "$INSTALLED_FILE" >> "$STAGE_FILE"
+        awk -F '\t' 'NF == 2 && $1 !~ /^(version|profile|schema)$/ { print $1 "\t" $2 }' "$INSTALLED_FILE" >> "$STAGE_FILE"
     fi
 }
 
@@ -363,6 +425,7 @@ write_installed_manifest() {
     mkdir -p "$(dirname "$INSTALLED_FILE")"
     {
         printf '%s\n' '# ctk installed assets'
+        printf 'schema\t%s\n' "$MANIFEST_SCHEMA"
         printf 'version\t%s\n' "$VERSION"
         printf 'profile\t%s\n' "$PROFILE"
         cat "$STAGE_FILE"
@@ -527,6 +590,9 @@ stage_modules() {
         if [ -d "$module_directory/scripts" ]; then
             stage_directory "$module_directory/scripts" ".claude/ctk/modules/$module_name/scripts"
         fi
+        if [ -d "$module_directory/skills" ]; then
+            stage_directory "$module_directory/skills" ".claude/skills/$module_name"
+        fi
     done
 }
 
@@ -605,7 +671,7 @@ uninstall_staged_assets() {
     [ -f "$INSTALLED_FILE" ] || return
     uninstall_keep=$TARGET_DIR/.ctk-uninstall-keep.$$
     : > "$uninstall_keep"
-    awk -F '\t' 'NF == 2 && $1 !~ /^(version|profile)$/ { print $1 "\t" $2 }' "$INSTALLED_FILE" |
+    awk -F '\t' 'NF == 2 && $1 !~ /^(version|profile|schema)$/ { print $1 "\t" $2 }' "$INSTALLED_FILE" |
         while IFS="$(printf '\t')" read -r staged_path staged_hash; do
             if ! safe_relative "$staged_path"; then
                 printf '%s\n' "FAIL: unsafe staged path in installed manifest: $staged_path" >&2
@@ -637,6 +703,7 @@ uninstall_staged_assets() {
     if [ -s "$uninstall_keep" ]; then
         {
             printf '%s\n' '# ctk installed assets'
+            printf 'schema\t%s\n' "$MANIFEST_SCHEMA"
             printf 'version\t%s\n' "$VERSION"
             printf 'profile\t%s\n' "$PROFILE"
             cat "$uninstall_keep"
@@ -703,9 +770,14 @@ installed_profile() {
     awk -F '\t' '$1 == "profile" { print $2; exit }' "$INSTALLED_FILE"
 }
 
+installed_schema() {
+    [ -f "$INSTALLED_FILE" ] || return 0
+    awk -F '\t' '$1 == "schema" { print $2; exit }' "$INSTALLED_FILE"
+}
+
 installed_count() {
     [ -f "$INSTALLED_FILE" ] || { printf '%s\n' 0; return; }
-    awk -F '\t' 'NF == 2 && $1 !~ /^(version|profile)$/ { count++ } END { print count + 0 }' "$INSTALLED_FILE"
+    awk -F '\t' 'NF == 2 && $1 !~ /^(version|profile|schema)$/ { count++ } END { print count + 0 }' "$INSTALLED_FILE"
 }
 
 status_cmd() {
@@ -753,7 +825,10 @@ budget_cmd() { ensure_target_for_read; budget_report; }
 doctor_installed_assets() {
     [ -f "$INSTALLED_FILE" ] || { printf '%s\n' 'PASS: no staged assets are recorded'; return 0; }
     doctor_failed=0
-    awk -F '\t' 'NF == 2 && $1 !~ /^(version|profile)$/ { print $1 "\t" $2 }' "$INSTALLED_FILE" |
+    if [ -z "$(installed_schema)" ]; then
+        printf '%s\n' "WARN: installed manifest predates schema versioning (run 'ctk update' to migrate)"
+    fi
+    awk -F '\t' 'NF == 2 && $1 !~ /^(version|profile|schema)$/ { print $1 "\t" $2 }' "$INSTALLED_FILE" |
         (
             asset_failed=0
             while IFS="$(printf '\t')" read -r staged_path staged_hash; do
@@ -849,6 +924,86 @@ state_cmd() {
     esac
 }
 
+goal_field() {
+    [ -f "$GOAL_FILE" ] || return 0
+    awk -v key="$1: " 'index($0, key) == 1 { print substr($0, length(key) + 1); exit }' "$GOAL_FILE"
+}
+
+# A goal record is a data file only: it is never wired into hooks/session-start.sh
+# or ctk budget, and it never triggers unattended follow-on action.
+goal_render() {
+    printf 'objective: %s\n' "$goal_objective"
+    printf 'acceptance: %s\n' "$goal_acceptance"
+    printf 'phase: %s\n' "$goal_phase"
+    printf 'next_action: %s\n' "$goal_next"
+    printf 'status: %s\n' "$1"
+    [ -z "$goal_evidence" ] || printf 'evidence: %s\n' "$goal_evidence"
+    printf 'updated: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+
+goal_write() {
+    status=$1
+    prompt=$2
+    verb=$3
+    content=$(goal_render "$status")
+    bytes=$(printf '%s\n' "$content" | wc -c | tr -d ' ')
+    limit_bytes=$((GOAL_LIMIT * 4))
+    if [ "$bytes" -gt "$limit_bytes" ]; then
+        die "goal is too large: $bytes bytes (limit: $limit_bytes bytes / $GOAL_LIMIT estimated tokens); shorten the goal text"
+    fi
+    if [ "$DRY_RUN" -eq 1 ]; then printf '%s\n' "DRY-RUN: $verb $GOAL_FILE"; return; fi
+    confirm_mutation "$prompt" || die "goal update cancelled"
+    mkdir -p "$(dirname "$GOAL_FILE")"
+    printf '%s\n' "$content" > "$GOAL_FILE"
+    printf '%s\n' "CHANGED: $verb $GOAL_FILE"
+}
+
+goal_cmd() {
+    ensure_target_for_write
+    case $GOAL_ACTION in
+        show)
+            if [ -f "$GOAL_FILE" ]; then cat "$GOAL_FILE"; else printf '%s\n' 'SKIP: no active goal'; fi
+            ;;
+        set)
+            [ -n "$GOAL_OBJECTIVE" ] || die "goal set requires --objective"
+            [ -n "$GOAL_ACCEPTANCE" ] || die "goal set requires --acceptance"
+            goal_objective=$GOAL_OBJECTIVE
+            goal_acceptance=$GOAL_ACCEPTANCE
+            goal_phase=${GOAL_PHASE:-not started}
+            goal_next=$GOAL_NEXT
+            goal_evidence=
+            goal_write active "Set active goal in $GOAL_FILE?" 'wrote active goal to'
+            ;;
+        pause|cancel)
+            [ -f "$GOAL_FILE" ] || die "no active goal to update: $GOAL_FILE"
+            goal_objective=$(goal_field objective)
+            goal_acceptance=$(goal_field acceptance)
+            goal_phase=$(goal_field phase)
+            goal_next=$(goal_field next_action)
+            goal_evidence=
+            if [ "$GOAL_ACTION" = pause ]; then goal_new_status=paused; else goal_new_status=cancelled; fi
+            goal_write "$goal_new_status" "Set goal status to $goal_new_status in $GOAL_FILE?" "updated goal status to $goal_new_status in"
+            ;;
+        complete)
+            [ -f "$GOAL_FILE" ] || die "no active goal to complete: $GOAL_FILE"
+            [ -n "$GOAL_EVIDENCE" ] || die "goal complete requires --evidence (record test/build proof, not a time or token budget)"
+            goal_objective=$(goal_field objective)
+            goal_acceptance=$(goal_field acceptance)
+            goal_phase=$(goal_field phase)
+            goal_next=$(goal_field next_action)
+            goal_evidence=$GOAL_EVIDENCE
+            goal_write completed "Mark goal complete in $GOAL_FILE?" 'marked goal complete in'
+            ;;
+        clear)
+            if [ ! -f "$GOAL_FILE" ]; then printf '%s\n' 'SKIP: no active goal to clear'; return; fi
+            if [ "$DRY_RUN" -eq 1 ]; then printf '%s\n' "DRY-RUN: remove $GOAL_FILE"; return; fi
+            confirm_mutation "Clear active goal $GOAL_FILE?" || die "goal clear cancelled"
+            rm -f "$GOAL_FILE"
+            printf '%s\n' "CHANGED: cleared goal $GOAL_FILE"
+            ;;
+    esac
+}
+
 case $COMMAND in
     install) install_cmd ;;
     update) update_cmd ;;
@@ -858,6 +1013,7 @@ case $COMMAND in
     doctor) doctor_cmd ;;
     budget) budget_cmd ;;
     state) state_cmd ;;
+    goal) goal_cmd ;;
     version) printf '%s\n' "ctk $VERSION" ;;
     help) usage ;;
     *) die "unknown command: $COMMAND (run 'ctk help')" ;;

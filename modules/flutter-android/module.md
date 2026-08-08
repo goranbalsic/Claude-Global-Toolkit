@@ -1,7 +1,7 @@
 ---
 name: flutter-android
 description: "Flutter Android release workflows: static analysis, tests, APK and Play App Bundle builds, version bumping, signing preflight, and environment diagnostics."
-version: 1.0.0
+version: 1.1.0
 profiles:
   - full
 detect: "pubspec.yaml contains flutter:"
@@ -23,12 +23,19 @@ check before it does any work.
 
 ## Adds
 
-- `/ctk:analyze`, `/ctk:test`, `/ctk:apk`, `/ctk:bundle`, `/ctk:version`,
-  `/ctk:preflight`, `/ctk:release`, and `/ctk:doctor`.
+- `/flutter-android:analyze`, `/flutter-android:test`, `/flutter-android:apk`,
+  `/flutter-android:bundle`, `/flutter-android:version`,
+  `/flutter-android:preflight`, `/flutter-android:release`, and
+  `/flutter-android:doctor`.
 - POSIX shell helpers that call the installed Flutter SDK and Gradle wrapper
   through Flutter.
 - A release gate that rejects tracked keystores, `key.properties`, and
   environment files before release work begins.
+- Two on-demand skills for the planning side of Flutter work that the
+  commands above do not cover: `flutter-recon` (project reconnaissance and
+  scoped change planning) and `flutter-ui-checklist` (a UI/feature
+  implementation checklist). Both cost nothing until invoked, same as the
+  commands.
 
 ## Does not do
 

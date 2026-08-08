@@ -9,6 +9,63 @@ Versioning policy for this toolkit specifically:
 - **minor**: new commands, agents, skills, modules, or CLI capability
 - **major**: a change to the core operating rules or to the installer contract
 
+## [3.1.0] - 2026-08-08
+
+Closes the CTKv4 core/lean-feature gap: a versioned install manifest, a bounded
+active-goal record, a reviewable-refinement command, deterministic task-context
+routing, and a Flutter/Android planning skill pair. Everything that already
+worked in 3.0.0 (`install`, `update`, `doctor`, bounded state, the subagent
+convention) is reused unchanged; nothing was added to the always-loaded core.
+See `docs/CTKV4_DESIGN.md` for the baseline this was measured against and what
+was deliberately deferred (repository presentation, SEO, and funding setup are
+a separate follow-up).
+
+### Added
+
+- **Versioned install manifest.** `.claude/ctk/installed.txt` gains a
+  `schema` line. A pre-3.1.0 manifest (no `schema` line) is detected by
+  `ctk doctor` (`WARN`, non-fatal) and migrates automatically the next time
+  `ctk update` or `ctk install` runs, since the manifest is always rewritten
+  with current metadata.
+- **`ctk goal`**, in `bin/ctk` and `bin/ctk.ps1`: `set`, `show`, `pause`,
+  `complete --evidence`, `cancel`, `clear` for a single bounded active goal in
+  `.claude/ctk/GOAL.md` (~300-token cap, rejected outright if oversized).
+  Deliberately **not** wired into `hooks/session-start.sh` or `ctk budget`, so
+  it adds zero always-loaded cost and never continues work on its own.
+  `complete` requires a one-line `--evidence` value; a goal is never
+  completed on a time or token budget alone. New `/ctk:goal` command.
+- **`ctk refine`** (`/ctk:refine`, command-only, no new CLI surface): proposes
+  one evidence-based edit to a project-local skill, checklist, or routing
+  rule, shows the diff/benefit/token-cost/rollback, edits only after explicit
+  approval, and records the change through the existing `ctk state add`
+  instead of a new history file. Refuses `core/CLAUDE.core.md` and anything
+  inside a managed block.
+- **`task-context-loader` skill**: a deterministic routing index mapping a
+  stated task category to the smallest existing command, skill, agent, or
+  module asset, so a task does not trigger broad exploratory reading.
+- **Two Flutter/Android planning skills**, `flutter-recon` and
+  `flutter-ui-checklist`, filling the reconnaissance/checklist gap the
+  existing build/verify scripts (`analyze`, `test`, `preflight`, `release`,
+  `doctor`) don't cover. Module skills are a new optional `skills/`
+  subdirectory in the module contract, staged the same way as `commands/`
+  and `scripts/`.
+- **`docs/CTKV4_DESIGN.md`** and **`docs/FUNDING_SETUP.md`** (the latter has
+  no funding link or `FUNDING.yml`; it documents what a verified destination
+  requires, since none exists yet).
+
+### Fixed
+
+- `prepare_stage_records` in `bin/ctk` had no exclusion filter for its manifest
+  header keys, so a second `install` or any `update` after one duplicated the
+  `version`/`profile` lines in `installed.txt` (the PowerShell implementation
+  already excluded them correctly). Fixed alongside the new `schema` key;
+  covered by `test_legacy_manifest_migrates_on_update`.
+- `modules/README.md` documented the module command-staging path as
+  `.claude/commands/ctk/<command>.md` and the flutter-android module's "Adds"
+  list named its commands `/ctk:*`; both were stale. The installer has always
+  staged module commands to `.claude/commands/<module-name>/`, invoked as
+  `/<module-name>:<command>`.
+
 ## [3.0.0] - 2026-08-08
 
 A rewrite from a documentation project into working software. Version 2 described

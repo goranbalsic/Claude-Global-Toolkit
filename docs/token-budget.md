@@ -63,6 +63,17 @@ of the session. Delegating that to the `investigator` subagent moves the cost in
 a throwaway context window and returns a structured summary. The work still
 happens; the main thread just does not carry the raw material afterwards.
 
+## Goal state is bounded but not always-loaded
+
+`.claude/ctk/GOAL.md` (`ctk goal set|show|pause|complete|cancel|clear`) is
+capped the same way state is, at roughly 300 tokens, and a `goal set` that
+would exceed the cap is rejected outright rather than silently truncated.
+Unlike `STATE.md`, it is deliberately **not** read by
+`hooks/session-start.sh` and **not** counted by `ctk budget`: a goal is
+working memory for one task, consulted only through `ctk goal show` or
+`/ctk:resume` when the task explicitly needs it, not recited at the start of
+every session.
+
 ## Bounded state, unbounded archive
 
 `.claude/ctk/STATE.md` is the working set: enough to resume a session, and nothing

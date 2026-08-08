@@ -94,7 +94,7 @@ software to run.
 
 ## What you get
 
-**7 slash commands** that run real tooling rather than restating procedure:
+**9 slash commands** that run real tooling rather than restating procedure:
 
 | Command | What it does |
 |---|---|
@@ -105,6 +105,8 @@ software to run.
 | `/ctk:verify` | Detects your toolchain (Flutter, Node, Python, Go, Rust, Make) and runs its real analyze, lint, typecheck, and test commands. Reports pass, fail, skip, or unavailable honestly. |
 | `/ctk:review` | Adversarial review of the current diff, delegated to an isolated subagent. |
 | `/ctk:ship` | Pre-release gate: verification, version bump, changelog entry, clean tree, no staged secrets. |
+| `/ctk:goal` | Creates, inspects, pauses, completes, cancels, or clears one bounded active goal in `.claude/ctk/GOAL.md`. Never auto-loaded and never continues work on its own; `complete` requires stated evidence. |
+| `/ctk:refine` | Proposes one evidence-based improvement to a project-local skill, checklist, or routing rule, with a diff and rollback path, and applies it only after explicit approval. |
 
 **4 subagents** that exist for token economics. Each runs in its own context window
 and returns a compact digest, so expensive work does not stay in your main thread:
@@ -112,8 +114,10 @@ and returns a compact digest, so expensive work does not stay in your main threa
 `investigator` (repository reconnaissance), `code-reviewer`, `verifier`,
 `security-reviewer`.
 
-**3 skills** loaded progressively when relevant: session continuity,
-evidence and uncertainty labelling, safe reversible changes.
+**4 skills** loaded progressively when relevant: session continuity,
+evidence and uncertainty labelling, safe reversible changes, and task-scoped
+context routing (naming the smallest existing command, skill, agent, or
+module asset for a stated task category instead of reading broadly).
 
 **3 hooks** that provide real automation, not advice:
 
@@ -132,7 +136,10 @@ documented), `apk` (debug and release, `--split-per-abi`, flavors, size
 reporting), `bundle`, `version` (safe semver and build-number bumping in
 `pubspec.yaml`), `preflight`, `release`, `doctor`. The preflight gate fails if any
 keystore, `key.properties`, or `.env` file is tracked by git, and no script ever
-prints a secret.
+prints a secret. It also adds two on-demand skills for the planning side of
+Flutter work the commands above don't cover: `flutter-recon` (project
+reconnaissance and scoped change planning) and `flutter-ui-checklist` (a
+UI/feature implementation checklist).
 
 ## Install
 
@@ -218,7 +225,7 @@ manages a delimited block and leaves everything outside it untouched:
 # My project's own instructions
 Deploy only from main. Never touch the migrations directory without review.
 
-<!-- ctk:begin v=3.0.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
+<!-- ctk:begin v=3.1.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
 @/home/you/Claude-Global-Toolkit/core/CLAUDE.core.md
 <!-- ctk:end -->
 ```
@@ -236,6 +243,9 @@ ctk budget      # measured always-loaded cost, with pass/fail against the caps
 ctk update      # refresh the managed block in place
 ctk state show  # the capped working set
 ctk state add "Finished currency parser. Next: wire the rate cache."
+ctk goal show   # the single bounded active goal, never auto-loaded
+ctk goal set --objective "ship v3.1" --acceptance "tests pass"
+ctk goal complete --evidence "sh tests/run.sh: 0 failed"
 ```
 
 Then work normally in Claude Code and reach for the commands:
@@ -246,6 +256,7 @@ Then work normally in Claude Code and reach for the commands:
 /ctk:verify
 /ctk:review
 /ctk:checkpoint
+/ctk:goal set objective: offline exchange-rate caching; acceptance: tests pass
 /ctk:ship
 ```
 

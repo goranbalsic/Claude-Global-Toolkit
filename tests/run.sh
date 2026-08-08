@@ -49,7 +49,7 @@ new_target() {
 test_fresh_install() {
     target=$(new_target fresh)
     "$CTK" install --target "$target" --yes >/dev/null
-    assert_file_contains "$target/CLAUDE.md" '<!-- ctk:begin v=3.0.0 profile=standard hash=' &&
+    assert_file_contains "$target/CLAUDE.md" '<!-- ctk:begin v=3.1.0 profile=standard hash=' &&
         assert_file_contains "$target/CLAUDE.md" '<!-- ctk:end -->'
 }
 
@@ -225,11 +225,12 @@ test_installed_manifest_is_accurate() {
     "$CTK" install --profile standard --target "$target" --yes >/dev/null
     manifest=$target/.claude/ctk/installed.txt
     [ "$(awk -F '\t' '$1 == "profile" { print $2 }' "$manifest")" = standard ] &&
-        [ "$(awk -F '\t' '$1 == "version" { print $2 }' "$manifest")" = 3.0.0 ] &&
+        [ "$(awk -F '\t' '$1 == "version" { print $2 }' "$manifest")" = 3.1.0 ] &&
+        [ "$(awk -F '\t' '$1 == "schema" { print $2 }' "$manifest")" = 1 ] &&
         grep -F '.claude/commands/ctk/resume.md' "$manifest" >/dev/null &&
         grep -F 'hooks/session-start.sh' "$manifest" >/dev/null &&
-        [ "$(awk -F '\t' 'NF == 2 && $1 != "version" && $1 != "profile" && $1 !~ /^#/ { count++ } END { print count + 0 }' "$manifest")" -eq 12 ] &&
-        "$CTK" status --target "$target" | grep -F 'Staged files: 12' >/dev/null
+        [ "$(awk -F '\t' 'NF == 2 && $1 != "version" && $1 != "profile" && $1 != "schema" && $1 !~ /^#/ { count++ } END { print count + 0 }' "$manifest")" -eq 14 ] &&
+        "$CTK" status --target "$target" | grep -F 'Staged files: 14' >/dev/null
 }
 
 test_dry_run_profile_stages_nothing() {
@@ -273,6 +274,66 @@ test_dry_run_reports_backup_and_skip_without_writing() {
         [ "$before" = "$after" ]
 }
 
+test_legacy_manifest_migrates_on_update() {
+    target=$(new_target legacy-manifest)
+    "$CTK" install --profile standard --target "$target" --yes >/dev/null
+    manifest=$target/.claude/ctk/installed.txt
+    awk -F '\t' '$1 != "schema"' "$manifest" > "$manifest.tmp" && mv "$manifest.tmp" "$manifest"
+    [ "$(awk -F '\t' '$1 == "schema" { c++ } END { print c + 0 }' "$manifest")" -eq 0 ] || return 1
+    "$CTK" update --target "$target" --yes >/dev/null
+    [ "$(awk -F '\t' '$1 == "schema" { c++ } END { print c + 0 }' "$manifest")" -eq 1 ] &&
+        [ "$(awk -F '\t' '$1 == "schema" { print $2 }' "$manifest")" = 1 ] &&
+        [ "$(awk -F '\t' '$1 == "version" { c++ } END { print c + 0 }' "$manifest")" -eq 1 ] &&
+        [ "$(awk -F '\t' '$1 == "profile" { c++ } END { print c + 0 }' "$manifest")" -eq 1 ]
+}
+
+test_doctor_warns_on_legacy_manifest() {
+    target=$(new_target doctor-legacy-manifest)
+    "$CTK" install --profile standard --target "$target" --yes >/dev/null
+    manifest=$target/.claude/ctk/installed.txt
+    awk -F '\t' '$1 != "schema"' "$manifest" > "$manifest.tmp" && mv "$manifest.tmp" "$manifest"
+    "$CTK" doctor --target "$target" > "$target/output" 2>&1 || return 1
+    grep -F "WARN: installed manifest predates schema versioning (run 'ctk update' to migrate)" "$target/output" >/dev/null
+}
+
+test_goal_lifecycle() {
+    target=$(new_target goal-lifecycle)
+    "$CTK" goal show --target "$target" | grep -F 'SKIP: no active goal' >/dev/null || return 1
+    "$CTK" goal set --objective 'ship parser' --acceptance 'tests pass' --target "$target" --yes >/dev/null
+    assert_file_contains "$target/.claude/ctk/GOAL.md" 'objective: ship parser' &&
+        assert_file_contains "$target/.claude/ctk/GOAL.md" 'status: active' || return 1
+    "$CTK" goal pause --target "$target" --yes >/dev/null
+    assert_file_contains "$target/.claude/ctk/GOAL.md" 'status: paused' || return 1
+    if "$CTK" goal complete --target "$target" --yes >"$target/output" 2>&1; then
+        return 1
+    fi
+    grep -F 'goal complete requires --evidence' "$target/output" >/dev/null || return 1
+    "$CTK" goal complete --evidence 'sh tests/run.sh: 0 failed' --target "$target" --yes >/dev/null
+    assert_file_contains "$target/.claude/ctk/GOAL.md" 'status: completed' &&
+        assert_file_contains "$target/.claude/ctk/GOAL.md" 'evidence: sh tests/run.sh: 0 failed' || return 1
+    "$CTK" goal clear --target "$target" --yes >/dev/null
+    [ ! -e "$target/.claude/ctk/GOAL.md" ]
+}
+
+test_goal_excluded_from_budget() {
+    target=$(new_target goal-budget)
+    "$CTK" goal set --objective 'x' --acceptance 'y' --target "$target" --yes >/dev/null
+    "$CTK" budget --target "$target" > "$target/output"
+    ! grep -F 'GOAL.md' "$target/output" >/dev/null
+}
+
+test_flutter_module_skills_staged_with_module() {
+    flutter=$(new_target module-flutter-skills)
+    plain=$(new_target module-plain-skills)
+    printf '%s\n' 'name: demo' 'dependencies:' '  flutter:' '    sdk: flutter' > "$flutter/pubspec.yaml"
+    "$CTK" install --profile full --target "$flutter" --yes >/dev/null
+    "$CTK" install --profile full --target "$plain" --yes >/dev/null
+    [ -f "$flutter/.claude/skills/flutter-android/flutter-recon/SKILL.md" ] &&
+        [ -f "$flutter/.claude/skills/flutter-android/flutter-ui-checklist/SKILL.md" ] &&
+        [ ! -e "$plain/.claude/skills/flutter-android" ] &&
+        grep -F '.claude/skills/flutter-android/flutter-recon/SKILL.md' "$flutter/.claude/ctk/installed.txt" >/dev/null
+}
+
 run_test test_fresh_install
 run_test test_idempotent_install
 run_test test_user_content_preserved
@@ -292,6 +353,11 @@ run_test test_installed_manifest_is_accurate
 run_test test_dry_run_profile_stages_nothing
 run_test test_doctor_flags_missing_and_modified_staged_assets
 run_test test_dry_run_reports_backup_and_skip_without_writing
+run_test test_legacy_manifest_migrates_on_update
+run_test test_doctor_warns_on_legacy_manifest
+run_test test_goal_lifecycle
+run_test test_goal_excluded_from_budget
+run_test test_flutter_module_skills_staged_with_module
 
 printf '%s\n' "SUMMARY: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

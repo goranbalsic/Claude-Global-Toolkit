@@ -14,10 +14,12 @@ module.md       machine-readable declaration and scope
 README.md       operator documentation
 commands/       Claude Code slash-command definitions
 scripts/        executable, dependency-light helpers called by commands
+skills/         optional: progressive-disclosure guidance, staged alongside
+                 commands/scripts whenever the module itself is selected
 ```
 
 `module.md` starts with YAML frontmatter. Required fields are `name`,
-`version`, `profiles`, `detection`, and `token-cost`. The body must state what
+`version`, `profiles`, `detect`, and `token-cost`. The body must state what
 the module adds and what it deliberately does not do. `token-cost` must make
 clear that the module is not loaded until one of its commands is invoked.
 
@@ -30,16 +32,22 @@ Markdown. Scripts must be safe to run from the detected project root, provide
 ## Installation
 
 `ctk install --profile full` picks up a module by scanning declarations under
-`modules/` and selecting those whose `profiles` includes `full`. The installer
-then places a selected module's command files under the target
-`.claude/commands/ctk/` directory and its complete module tree under
-`.claude/ctk/modules/<module-name>/`. This gives commands a stable relative
-path to their scripts:
+`modules/` and selecting those whose `profiles` includes `full` and whose
+`detect` rule matches the target project (`--module <name>` selects a module
+explicitly regardless of profile or detection). The installer then places a
+selected module's command files under the target's own
+`.claude/commands/<module-name>/` directory, its scripts under
+`.claude/ctk/modules/<module-name>/scripts/`, and, if present, its skills
+under `.claude/skills/<module-name>/`:
 
 ```text
-.claude/commands/ctk/<command>.md
+.claude/commands/<module-name>/<command>.md
 .claude/ctk/modules/<module-name>/scripts/<script>.sh
+.claude/skills/<module-name>/<skill-name>/SKILL.md
 ```
+
+A command installed this way is invoked as `/<module-name>:<command>`, for
+example `/flutter-android:analyze`.
 
 Minimal and standard profiles do not acquire a module unless their manifest
 explicitly selects it. This staging behavior is an installer responsibility;

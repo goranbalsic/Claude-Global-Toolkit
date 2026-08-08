@@ -11,9 +11,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Version = '3.0.0'
+$Version = '3.1.0'
 $CoreLimit = 1200
 $StateLimit = 400
+$GoalLimit = 300
+$ManifestSchema = 1
 $RootDir = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
 $CoreFile = Join-Path $RootDir 'core\CLAUDE.core.md'
 $TargetDir = (Get-Location).Path
@@ -28,6 +30,12 @@ $ModulesDisabled = $false
 $RequestedModules = New-Object System.Collections.Generic.List[string]
 $StateAction = $null
 $StateText = $null
+$GoalAction = $null
+$GoalObjective = $null
+$GoalAcceptance = $null
+$GoalPhase = $null
+$GoalNext = $null
+$GoalEvidence = $null
 $BudgetPassed = $true
 $ProfileAssetsPassed = $true
 $InstalledAssetsPassed = $true
@@ -47,6 +55,7 @@ Commands:
   doctor        Check block integrity, drift, budget, staged assets, and backups.
   budget        Measure the always-loaded core and bounded state.
   state         state show | state add "text" | state rotate
+  goal          goal set|show|pause|complete|cancel|clear
   version       Print the toolkit version.
   help          Print this help.
 
@@ -60,6 +69,11 @@ Options:
   --target DIR              Target directory (default: current directory).
   --dry-run                 Describe a mutating operation without writing.
   --yes                     Do not prompt before a mutation.
+  --objective TEXT          goal set: the objective (required).
+  --acceptance TEXT         goal set: the acceptance check (required).
+  --phase TEXT              goal set/pause: the current phase.
+  --next TEXT               goal set: the next verifiable action.
+  --evidence TEXT           goal complete: the test/build evidence (required).
 '@ | Write-Output
 }
 
@@ -67,6 +81,7 @@ function Get-TargetFile { Join-Path $script:TargetDir 'CLAUDE.md' }
 function Get-BackupDir { Join-Path $script:TargetDir '.ctk-backup' }
 function Get-StateFile { Join-Path $script:TargetDir '.claude\ctk\STATE.md' }
 function Get-InstalledFile { Join-Path $script:TargetDir '.claude\ctk\installed.txt' }
+function Get-GoalFile { Join-Path $script:TargetDir '.claude\ctk\GOAL.md' }
 function Require-Core { if (-not (Test-Path -LiteralPath $CoreFile -PathType Leaf)) { Fail "core file is missing: $CoreFile" } }
 function Get-FileSha256([string]$Path) { (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
 function Get-CoreHash { Require-Core; (Get-FileSha256 $CoreFile).Substring(0, 12) }
@@ -164,7 +179,7 @@ function Prepare-StageRecords {
     if (Test-Path -LiteralPath $installed -PathType Leaf) {
         foreach ($line in Get-Content -LiteralPath $installed) {
             $parts = $line -split "`t", 2
-            if ($parts.Count -eq 2 -and $parts[0] -notin @('version', 'profile') -and -not $parts[0].StartsWith('#')) { $script:StageRecords[$parts[0]] = $parts[1] }
+            if ($parts.Count -eq 2 -and $parts[0] -notin @('version', 'profile', 'schema') -and -not $parts[0].StartsWith('#')) { $script:StageRecords[$parts[0]] = $parts[1] }
         }
     }
 }
@@ -173,7 +188,7 @@ function Write-InstalledManifest {
     if ($StageRecords.Count -eq 0) { Remove-Item -LiteralPath $installed -Force -ErrorAction SilentlyContinue; return }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $installed) | Out-Null
     $lines = New-Object System.Collections.Generic.List[string]
-    $lines.Add('# ctk installed assets'); $lines.Add("version`t$Version"); $lines.Add("profile`t$Profile")
+    $lines.Add('# ctk installed assets'); $lines.Add("schema`t$ManifestSchema"); $lines.Add("version`t$Version"); $lines.Add("profile`t$Profile")
     foreach ($path in ($StageRecords.Keys | Sort-Object)) { $lines.Add("$path`t$($StageRecords[$path])") }
     [IO.File]::WriteAllLines($installed, [string[]]$lines, [Text.UTF8Encoding]::new($false))
 }
@@ -264,6 +279,7 @@ function Stage-ProfileAssets {
         $moduleDir = Join-Path $RootDir ("modules\$module")
         if (Test-Path -LiteralPath (Join-Path $moduleDir 'commands') -PathType Container) { Stage-Directory (Join-Path $moduleDir 'commands') ".claude/commands/$module" }
         if (Test-Path -LiteralPath (Join-Path $moduleDir 'scripts') -PathType Container) { Stage-Directory (Join-Path $moduleDir 'scripts') ".claude/ctk/modules/$module/scripts" }
+        if (Test-Path -LiteralPath (Join-Path $moduleDir 'skills') -PathType Container) { Stage-Directory (Join-Path $moduleDir 'skills') ".claude/skills/$module" }
     }
 }
 function Stage-SelectedProfile { if (-not $DryRun) { Prepare-StageRecords }; Stage-ProfileAssets; if (-not $DryRun) { Write-InstalledManifest } }
@@ -292,7 +308,7 @@ function Invoke-UninstallStagedAssets {
     $installed = Get-InstalledFile; if (-not (Test-Path -LiteralPath $installed -PathType Leaf)) { return }
     $kept = New-Object System.Collections.Generic.List[string]
     foreach ($line in Get-Content -LiteralPath $installed) {
-        $parts = $line -split "`t", 2; if ($parts.Count -ne 2 -or $parts[0] -in @('version', 'profile') -or $parts[0].StartsWith('#')) { continue }
+        $parts = $line -split "`t", 2; if ($parts.Count -ne 2 -or $parts[0] -in @('version', 'profile', 'schema') -or $parts[0].StartsWith('#')) { continue }
         $path = $parts[0]; $hash = $parts[1]; if (-not (Test-SafeRelative $path)) { Fail "unsafe staged path in installed manifest: $path" }; $target = Join-Path $TargetDir $path
         if (-not (Test-Path -LiteralPath $target)) { Write-Output "SKIP: staged file already absent: $path" }
         elseif (-not (Test-Path -LiteralPath $target -PathType Leaf)) { Write-Output "KEPT: staged path is no longer a file: $path"; $kept.Add("$path`t$hash") }
@@ -300,7 +316,7 @@ function Invoke-UninstallStagedAssets {
         else { Write-Output "KEPT: locally modified staged file: $path"; $kept.Add("$path`t$hash") }
     }
     if ($DryRun) { return }
-    if ($kept.Count -eq 0) { Remove-Item -LiteralPath $installed -Force; Remove-EmptyParents $installed } else { $lines = @('# ctk installed assets', "version`t$Version", "profile`t$Profile") + @($kept); [IO.File]::WriteAllLines($installed, [string[]]$lines, [Text.UTF8Encoding]::new($false)) }
+    if ($kept.Count -eq 0) { Remove-Item -LiteralPath $installed -Force; Remove-EmptyParents $installed } else { $lines = @('# ctk installed assets', "schema`t$ManifestSchema", "version`t$Version", "profile`t$Profile") + @($kept); [IO.File]::WriteAllLines($installed, [string[]]$lines, [Text.UTF8Encoding]::new($false)) }
 }
 function Invoke-Uninstall {
     Ensure-WriteTarget; $file = Get-TargetFile; if (-not (Test-Path -LiteralPath $file)) { Fail "no target file to uninstall: $file" }; if ((Get-BlockState) -ne 'complete') { Fail 'uninstall requires one complete managed block' }
@@ -333,10 +349,12 @@ function Invoke-BudgetReport {
     Write-Output "$coreLabel`: core $CoreFile`: $coreBytes bytes, $coreTokens estimated tokens (limit: $CoreLimit)"; if (Test-Path -LiteralPath $stateFile) { Write-Output "$stateLabel`: state $stateFile`: $stateBytes bytes, $stateTokens estimated tokens (limit: $StateLimit)" } else { Write-Output "$stateLabel`: state $stateFile`: absent, 0 bytes, 0 estimated tokens (limit: $StateLimit)" }; $totalLabel = if ($failed) { 'FAIL' } else { 'PASS' }; Write-Output "$totalLabel`: total always-loaded surface: $($coreBytes + $stateBytes) bytes, $($coreTokens + $stateTokens) estimated tokens"; $script:BudgetPassed = -not $failed
 }
 function Get-InstalledProfile { $file = Get-InstalledFile; if (Test-Path -LiteralPath $file) { foreach ($line in Get-Content -LiteralPath $file) { if ($line.StartsWith("profile`t")) { return $line.Substring(8) } } }; return '' }
-function Get-InstalledCount { $file = Get-InstalledFile; if (-not (Test-Path -LiteralPath $file)) { return 0 }; $count = 0; foreach ($line in Get-Content -LiteralPath $file) { $parts = $line -split "`t", 2; if ($parts.Count -eq 2 -and $parts[0] -notin @('version', 'profile') -and -not $parts[0].StartsWith('#')) { $count++ } }; return $count }
+function Get-InstalledSchema { $file = Get-InstalledFile; if (Test-Path -LiteralPath $file) { foreach ($line in Get-Content -LiteralPath $file) { if ($line.StartsWith("schema`t")) { return $line.Substring(7) } } }; return '' }
+function Get-InstalledCount { $file = Get-InstalledFile; if (-not (Test-Path -LiteralPath $file)) { return 0 }; $count = 0; foreach ($line in Get-Content -LiteralPath $file) { $parts = $line -split "`t", 2; if ($parts.Count -eq 2 -and $parts[0] -notin @('version', 'profile', 'schema') -and -not $parts[0].StartsWith('#')) { $count++ } }; return $count }
 function Test-InstalledAssets {
     $file = Get-InstalledFile; if (-not (Test-Path -LiteralPath $file)) { Write-Output 'PASS: no staged assets are recorded'; $script:InstalledAssetsPassed = $true; return }; $failed = $false
-    foreach ($line in Get-Content -LiteralPath $file) { $parts = $line -split "`t", 2; if ($parts.Count -ne 2 -or $parts[0] -in @('version', 'profile') -or $parts[0].StartsWith('#')) { continue }; $path = $parts[0]; $hash = $parts[1]
+    if (-not (Get-InstalledSchema)) { Write-Output "WARN: installed manifest predates schema versioning (run 'ctk update' to migrate)" }
+    foreach ($line in Get-Content -LiteralPath $file) { $parts = $line -split "`t", 2; if ($parts.Count -ne 2 -or $parts[0] -in @('version', 'profile', 'schema') -or $parts[0].StartsWith('#')) { continue }; $path = $parts[0]; $hash = $parts[1]
         if (-not (Test-SafeRelative $path)) { Write-Output "FAIL: unsafe staged path in installed manifest: $path"; $failed = $true } elseif (-not (Test-Path -LiteralPath (Join-Path $TargetDir $path) -PathType Leaf)) { Write-Output "FAIL: staged asset is missing: $path"; $failed = $true } elseif ((Get-FileSha256 (Join-Path $TargetDir $path)) -eq $hash) { Write-Output "PASS: staged asset matches: $path" } else { Write-Output "FAIL: staged asset was locally modified: $path"; $failed = $true }
     }; $script:InstalledAssetsPassed = -not $failed
 }
@@ -353,9 +371,67 @@ function Invoke-State {
     Ensure-WriteTarget; $stateFile = Get-StateFile
     switch ($StateAction) { 'show' { if (Test-Path -LiteralPath $stateFile) { Get-Content -LiteralPath $stateFile } else { Write-Output 'SKIP: state is absent' } }; 'add' { if ($DryRun) { Write-Output "DRY-RUN: add one state entry to $stateFile"; return }; Confirm-Mutation "Add state entry to ${stateFile}?"; New-Item -ItemType Directory -Force -Path (Split-Path -Parent $stateFile) | Out-Null; [IO.File]::AppendAllText($stateFile, ([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ') + ' ' + $StateText + [Environment]::NewLine), [Text.UTF8Encoding]::new($false)); Write-Output "CHANGED: added state entry to $stateFile"; Invoke-StateRotate }; 'rotate' { if (-not $DryRun) { Confirm-Mutation "Rotate bounded state in ${stateFile}?" }; Invoke-StateRotate } }
 }
+function Get-GoalField([string]$Key) {
+    $file = Get-GoalFile; if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { return '' }
+    $prefix = $Key + ': '
+    foreach ($line in Get-Content -LiteralPath $file) { if ($line.StartsWith($prefix)) { return $line.Substring($prefix.Length) } }
+    return ''
+}
+# A goal record is a data file only: it is never wired into hooks/session-start.sh
+# or ctk budget, and it never triggers unattended follow-on action.
+function New-GoalContent([string]$Status, [string]$Objective, [string]$Acceptance, [string]$Phase, [string]$Next, [string]$Evidence) {
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("objective: $Objective"); $lines.Add("acceptance: $Acceptance"); $lines.Add("phase: $Phase"); $lines.Add("next_action: $Next"); $lines.Add("status: $Status")
+    if ($Evidence) { $lines.Add("evidence: $Evidence") }
+    $lines.Add("updated: $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))")
+    return ($lines -join [Environment]::NewLine)
+}
+function Write-Goal([string]$Status, [string]$Objective, [string]$Acceptance, [string]$Phase, [string]$Next, [string]$Evidence, [string]$Prompt, [string]$Verb) {
+    $goalFile = Get-GoalFile
+    $content = New-GoalContent $Status $Objective $Acceptance $Phase $Next $Evidence
+    $bytes = [Text.UTF8Encoding]::new($false).GetByteCount($content + [Environment]::NewLine)
+    $limitBytes = $GoalLimit * 4
+    if ($bytes -gt $limitBytes) { Fail "goal is too large: $bytes bytes (limit: $limitBytes bytes / $GoalLimit estimated tokens); shorten the goal text" }
+    if ($DryRun) { Write-Output "DRY-RUN: $Verb $goalFile"; return }
+    Confirm-Mutation $Prompt
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $goalFile) | Out-Null
+    [IO.File]::WriteAllText($goalFile, $content + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+    Write-Output "CHANGED: $Verb $goalFile"
+}
+function Invoke-Goal {
+    Ensure-WriteTarget; $goalFile = Get-GoalFile
+    switch ($GoalAction) {
+        'show' { if (Test-Path -LiteralPath $goalFile -PathType Leaf) { Get-Content -LiteralPath $goalFile } else { Write-Output 'SKIP: no active goal' } }
+        'set' {
+            if (-not $GoalObjective) { Fail 'goal set requires --objective' }
+            if (-not $GoalAcceptance) { Fail 'goal set requires --acceptance' }
+            $phase = if ($GoalPhase) { $GoalPhase } else { 'not started' }
+            Write-Goal 'active' $GoalObjective $GoalAcceptance $phase $GoalNext '' "Set active goal in ${goalFile}?" 'wrote active goal to'
+        }
+        { $_ -in @('pause', 'cancel') } {
+            if (-not (Test-Path -LiteralPath $goalFile -PathType Leaf)) { Fail "no active goal to update: $goalFile" }
+            $newStatus = if ($GoalAction -eq 'pause') { 'paused' } else { 'cancelled' }
+            Write-Goal $newStatus (Get-GoalField 'objective') (Get-GoalField 'acceptance') (Get-GoalField 'phase') (Get-GoalField 'next_action') '' "Set goal status to $newStatus in ${goalFile}?" "updated goal status to $newStatus in"
+        }
+        'complete' {
+            if (-not (Test-Path -LiteralPath $goalFile -PathType Leaf)) { Fail "no active goal to complete: $goalFile" }
+            if (-not $GoalEvidence) { Fail 'goal complete requires --evidence (record test/build proof, not a time or token budget)' }
+            Write-Goal 'completed' (Get-GoalField 'objective') (Get-GoalField 'acceptance') (Get-GoalField 'phase') (Get-GoalField 'next_action') $GoalEvidence "Mark goal complete in ${goalFile}?" 'marked goal complete in'
+        }
+        'clear' {
+            if (-not (Test-Path -LiteralPath $goalFile -PathType Leaf)) { Write-Output 'SKIP: no active goal to clear'; return }
+            if ($DryRun) { Write-Output "DRY-RUN: remove $goalFile"; return }
+            Confirm-Mutation "Clear active goal ${goalFile}?"
+            Remove-Item -LiteralPath $goalFile -Force
+            Write-Output "CHANGED: cleared goal $goalFile"
+        }
+    }
+}
 
 $argList = New-Object System.Collections.Generic.List[string]; if ($Arguments) { $argList.AddRange([string[]]$Arguments) }
 if ($Command -eq 'state') { if ($argList.Count -eq 0) { Fail 'state requires show, add, or rotate' }; $StateAction = $argList[0]; $argList.RemoveAt(0); if ($StateAction -eq 'add') { if ($argList.Count -eq 0) { Fail 'state add requires one line of text' }; $StateText = $argList[0]; $argList.RemoveAt(0); if ($StateText -match "[`r`n]") { Fail 'state entries must be one line' } } elseif ($StateAction -notin @('show', 'rotate')) { Fail 'state requires show, add, or rotate' } }
-for ($i = 0; $i -lt $argList.Count; $i++) { switch ($argList[$i]) { '--link' { $Mode = 'link'; $ModeSet = $true }; '--embed' { $Mode = 'embed'; $ModeSet = $true }; '--global' { $GlobalTarget = $true }; '--profile' { $i++; if ($i -ge $argList.Count) { Fail '--profile requires a value' }; $Profile = $argList[$i]; $ProfileSet = $true }; '--module' { $i++; if ($i -ge $argList.Count) { Fail '--module requires a value' }; if ([string]::IsNullOrWhiteSpace($argList[$i]) -or $argList[$i] -match '[\\/]' -or $argList[$i].Contains('..')) { Fail "invalid module name: $($argList[$i])" }; $RequestedModules.Add($argList[$i]) }; '--no-modules' { $ModulesDisabled = $true }; '--target' { $i++; if ($i -ge $argList.Count) { Fail '--target requires a directory' }; $TargetDir = $argList[$i] }; '--dry-run' { $DryRun = $true }; '--yes' { $AssumeYes = $true }; '--help' { $Command = 'help' }; '-h' { $Command = 'help' }; default { Fail "unknown option: $($argList[$i])" } } }
+if ($Command -eq 'goal') { if ($argList.Count -eq 0) { Fail 'goal requires set, show, pause, complete, cancel, or clear' }; $GoalAction = $argList[0]; $argList.RemoveAt(0); if ($GoalAction -notin @('set', 'show', 'pause', 'complete', 'cancel', 'clear')) { Fail 'goal requires set, show, pause, complete, cancel, or clear' } }
+function Test-OneLine([string]$Name, [string]$Value) { if ($Value -match "[`r`n]") { Fail "$Name must be one line" } }
+for ($i = 0; $i -lt $argList.Count; $i++) { switch ($argList[$i]) { '--link' { $Mode = 'link'; $ModeSet = $true }; '--embed' { $Mode = 'embed'; $ModeSet = $true }; '--global' { $GlobalTarget = $true }; '--profile' { $i++; if ($i -ge $argList.Count) { Fail '--profile requires a value' }; $Profile = $argList[$i]; $ProfileSet = $true }; '--module' { $i++; if ($i -ge $argList.Count) { Fail '--module requires a value' }; if ([string]::IsNullOrWhiteSpace($argList[$i]) -or $argList[$i] -match '[\\/]' -or $argList[$i].Contains('..')) { Fail "invalid module name: $($argList[$i])" }; $RequestedModules.Add($argList[$i]) }; '--no-modules' { $ModulesDisabled = $true }; '--target' { $i++; if ($i -ge $argList.Count) { Fail '--target requires a directory' }; $TargetDir = $argList[$i] }; '--dry-run' { $DryRun = $true }; '--yes' { $AssumeYes = $true }; '--objective' { $i++; if ($i -ge $argList.Count) { Fail '--objective requires a value' }; Test-OneLine '--objective' $argList[$i]; $GoalObjective = $argList[$i] }; '--acceptance' { $i++; if ($i -ge $argList.Count) { Fail '--acceptance requires a value' }; Test-OneLine '--acceptance' $argList[$i]; $GoalAcceptance = $argList[$i] }; '--phase' { $i++; if ($i -ge $argList.Count) { Fail '--phase requires a value' }; Test-OneLine '--phase' $argList[$i]; $GoalPhase = $argList[$i] }; '--next' { $i++; if ($i -ge $argList.Count) { Fail '--next requires a value' }; Test-OneLine '--next' $argList[$i]; $GoalNext = $argList[$i] }; '--evidence' { $i++; if ($i -ge $argList.Count) { Fail '--evidence requires a value' }; Test-OneLine '--evidence' $argList[$i]; $GoalEvidence = $argList[$i] }; '--help' { $Command = 'help' }; '-h' { $Command = 'help' }; default { Fail "unknown option: $($argList[$i])" } } }
 if ($GlobalTarget) { $TargetDir = Join-Path $HOME '.claude' }
-switch ($Command) { 'install' { Invoke-Install }; 'update' { Invoke-Update }; 'uninstall' { Invoke-Uninstall }; 'restore' { Invoke-Restore }; 'status' { Ensure-ReadTarget; $state = Get-BlockState; Write-Output "Target: $(Get-TargetFile)"; if ($state -eq 'complete') { Write-Output "Managed block: present (profile: $(Get-HeaderValue 'profile'), mode: $(Get-BlockMode), hash: $(Get-HeaderValue 'hash'))" } else { Write-Output "Managed block: $state" }; $installedProfile = Get-InstalledProfile; if ($installedProfile) { Write-Output "Installed profile: $installedProfile" } elseif ($state -eq 'complete') { Write-Output "Installed profile: $(Get-HeaderValue 'profile')" } else { Write-Output 'Installed profile: none' }; Write-Output "Staged files: $(Get-InstalledCount)" }; 'doctor' { Invoke-Doctor }; 'budget' { Ensure-ReadTarget; Invoke-BudgetReport; if (-not $BudgetPassed) { exit 1 } }; 'state' { Invoke-State }; 'version' { Write-Output "ctk $Version" }; 'help' { Show-Usage }; default { Fail "unknown command: $Command (run 'ctk help')" } }
+switch ($Command) { 'install' { Invoke-Install }; 'update' { Invoke-Update }; 'uninstall' { Invoke-Uninstall }; 'restore' { Invoke-Restore }; 'status' { Ensure-ReadTarget; $state = Get-BlockState; Write-Output "Target: $(Get-TargetFile)"; if ($state -eq 'complete') { Write-Output "Managed block: present (profile: $(Get-HeaderValue 'profile'), mode: $(Get-BlockMode), hash: $(Get-HeaderValue 'hash'))" } else { Write-Output "Managed block: $state" }; $installedProfile = Get-InstalledProfile; if ($installedProfile) { Write-Output "Installed profile: $installedProfile" } elseif ($state -eq 'complete') { Write-Output "Installed profile: $(Get-HeaderValue 'profile')" } else { Write-Output 'Installed profile: none' }; Write-Output "Staged files: $(Get-InstalledCount)" }; 'doctor' { Invoke-Doctor }; 'budget' { Ensure-ReadTarget; Invoke-BudgetReport; if (-not $BudgetPassed) { exit 1 } }; 'state' { Invoke-State }; 'goal' { Invoke-Goal }; 'version' { Write-Output "ctk $Version" }; 'help' { Show-Usage }; default { Fail "unknown command: $Command (run 'ctk help')" } }

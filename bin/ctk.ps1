@@ -124,8 +124,8 @@ function Save-Backup([string]$Source) {
     if (Test-Path -LiteralPath $Source -PathType Leaf) { Copy-Item -LiteralPath $Source -Destination $backup } else { [IO.File]::WriteAllBytes($backup, [byte[]]@()) }
     return $backup
 }
-function New-Block {
-    $header = "<!-- ctk:begin v=$Version profile=$Profile hash=$(Get-CoreHash) -->"
+function New-Block([bool]$SeparatorAdded = $false) {
+    $header = "<!-- ctk:begin v=$Version profile=$Profile hash=$(Get-CoreHash) sep=$([int]$SeparatorAdded) -->"
     if ($Mode -eq 'link') { return $header + [Environment]::NewLine + '@' + $CoreFile + [Environment]::NewLine + '<!-- ctk:end -->' + [Environment]::NewLine }
     $body = [IO.File]::ReadAllText($CoreFile); if (-not $body.EndsWith("`n")) { $body += [Environment]::NewLine }
     return $header + [Environment]::NewLine + $body + '<!-- ctk:end -->' + [Environment]::NewLine
@@ -151,7 +151,7 @@ function Get-ProfileEntries {
 function Test-ProfileAssets {
     $failed = $false
     foreach ($entry in Get-ProfileEntries) {
-        if (-not (Test-SafeRelative $entry.Destination)) { Write-Output "FAIL: profile destination is unsafe: $($entry.Destination)"; $failed = $true; continue }
+        if (-not (Test-SafeRelative $entry.Destination.TrimEnd('/'))) { Write-Output "FAIL: profile destination is unsafe: $($entry.Destination)"; $failed = $true; continue }
         if ($entry.Source -eq '@state') { Write-Output 'PASS: referenced generated asset exists: @state'; continue }
         $source = Join-Path $RootDir $entry.Source.TrimEnd('/', '\')
         if (Test-Path -LiteralPath $source) { Write-Output "PASS: referenced asset exists: $($entry.Source)" } else { Write-Output "FAIL: referenced asset is missing: $($entry.Source)"; $failed = $true }
@@ -271,17 +271,21 @@ function Invoke-Install {
     Ensure-WriteTarget; Choose-ExistingSettings; $state = Get-BlockState
     if ($state -eq 'orphan') { Fail "orphaned ctk markers in $(Get-TargetFile); repair them before install" }
     if ($DryRun) { if ($state -eq 'complete') { Write-Output "DRY-RUN: SKIP: managed block already present in $(Get-TargetFile)" } else { Write-Output "DRY-RUN: install managed block in $(Get-TargetFile)" }; Stage-SelectedProfile; return }
-    Confirm-Mutation "Install profile $Profile in $TargetDir?"
+    Confirm-Mutation "Install profile $Profile in ${TargetDir}?"
     New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null
     if ($state -eq 'absent') {
-        $backup = Save-Backup (Get-TargetFile); $file = Get-TargetFile; $old = if (Test-Path -LiteralPath $file) { [IO.File]::ReadAllText($file) } else { '' }; if ($old.Length -gt 0 -and -not $old.EndsWith("`n")) { $old += [Environment]::NewLine }; Write-TargetText ($old + (New-Block)); Write-Output "CHANGED: installed managed block in $file (backup: $backup)"
+        $backup = Save-Backup (Get-TargetFile); $file = Get-TargetFile; $old = if (Test-Path -LiteralPath $file) { [IO.File]::ReadAllText($file) } else { '' }
+        $sepAdded = $old.Length -gt 0 -and -not $old.EndsWith("`n")
+        if ($sepAdded) { $old += [Environment]::NewLine }
+        Write-TargetText ($old + (New-Block $sepAdded)); Write-Output "CHANGED: installed managed block in $file (backup: $backup)"
     } else { Write-Output "SKIP: managed block already present in $(Get-TargetFile)" }
     Stage-SelectedProfile
 }
 function Invoke-Update {
     Ensure-WriteTarget; $file = Get-TargetFile; if (-not (Test-Path -LiteralPath $file)) { Fail "no target file to update: $file" }; if ((Get-BlockState) -ne 'complete') { Fail 'update requires one complete managed block' }; Choose-ExistingSettings
+    $existingSep = (Get-HeaderValue 'sep') -eq '1'
     if ($DryRun) { Write-Output "DRY-RUN: update managed block in $file"; Stage-SelectedProfile; return }
-    Confirm-Mutation "Update managed block in $file?"; $backup = Save-Backup $file; $old = [IO.File]::ReadAllText($file); $new = [regex]::Replace($old, '(?ms)^<!-- ctk:begin v=.*?^<!-- ctk:end -->\r?\n?', (New-Block), 1); Write-TargetText $new; Write-Output "CHANGED: updated managed block in $file (backup: $backup)"; Stage-SelectedProfile
+    Confirm-Mutation "Update managed block in ${file}?"; $backup = Save-Backup $file; $old = [IO.File]::ReadAllText($file); $new = [regex]::Replace($old, '(?ms)^<!-- ctk:begin v=.*?^<!-- ctk:end -->\r?\n?', (New-Block $existingSep), 1); Write-TargetText $new; Write-Output "CHANGED: updated managed block in $file (backup: $backup)"; Stage-SelectedProfile
 }
 function Remove-EmptyParents([string]$Path) { $parent = Split-Path -Parent $Path; while ($parent -and -not [string]::Equals($parent, $TargetDir, [StringComparison]::OrdinalIgnoreCase)) { try { Remove-Item -LiteralPath $parent -Force -ErrorAction Stop } catch { break }; $parent = Split-Path -Parent $parent } }
 function Invoke-UninstallStagedAssets {
@@ -300,8 +304,19 @@ function Invoke-UninstallStagedAssets {
 }
 function Invoke-Uninstall {
     Ensure-WriteTarget; $file = Get-TargetFile; if (-not (Test-Path -LiteralPath $file)) { Fail "no target file to uninstall: $file" }; if ((Get-BlockState) -ne 'complete') { Fail 'uninstall requires one complete managed block' }
+    $sepAdded = (Get-HeaderValue 'sep') -eq '1'
     if ($DryRun) { Write-Output "DRY-RUN: uninstall managed block from $file"; Invoke-UninstallStagedAssets; return }
-    Confirm-Mutation "Remove managed block and staged assets from $TargetDir?"; $backup = Save-Backup $file; $new = [regex]::Replace([IO.File]::ReadAllText($file), '(?ms)^<!-- ctk:begin v=.*?^<!-- ctk:end -->\r?\n?', '', 1)
+    Confirm-Mutation "Remove managed block and staged assets from ${TargetDir}?"; $backup = Save-Backup $file
+    $old = [IO.File]::ReadAllText($file)
+    $match = [regex]::Match($old, '(?ms)^<!-- ctk:begin v=.*?^<!-- ctk:end -->\r?\n?')
+    if (-not $match.Success) { Fail 'managed block not found for removal' }
+    $before = $old.Substring(0, $match.Index)
+    $after = $old.Substring($match.Index + $match.Length)
+    if ($sepAdded) {
+        if ($before.EndsWith("`r`n")) { $before = $before.Substring(0, $before.Length - 2) }
+        elseif ($before.EndsWith("`n")) { $before = $before.Substring(0, $before.Length - 1) }
+    }
+    $new = $before + $after
     if ($new -match '\S') { Write-TargetText $new; Write-Output "CHANGED: removed managed block from $file (backup: $backup)" } else { Remove-Item -LiteralPath $file -Force; Write-Output "CHANGED: removed managed block and empty target $file (backup: $backup)" }
     Invoke-UninstallStagedAssets
 }
@@ -336,7 +351,7 @@ function Invoke-StateRotate {
 }
 function Invoke-State {
     Ensure-WriteTarget; $stateFile = Get-StateFile
-    switch ($StateAction) { 'show' { if (Test-Path -LiteralPath $stateFile) { Get-Content -LiteralPath $stateFile } else { Write-Output 'SKIP: state is absent' } }; 'add' { if ($DryRun) { Write-Output "DRY-RUN: add one state entry to $stateFile"; return }; Confirm-Mutation "Add state entry to $stateFile?"; New-Item -ItemType Directory -Force -Path (Split-Path -Parent $stateFile) | Out-Null; [IO.File]::AppendAllText($stateFile, ([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ') + ' ' + $StateText + [Environment]::NewLine), [Text.UTF8Encoding]::new($false)); Write-Output "CHANGED: added state entry to $stateFile"; Invoke-StateRotate }; 'rotate' { if (-not $DryRun) { Confirm-Mutation "Rotate bounded state in $stateFile?" }; Invoke-StateRotate } }
+    switch ($StateAction) { 'show' { if (Test-Path -LiteralPath $stateFile) { Get-Content -LiteralPath $stateFile } else { Write-Output 'SKIP: state is absent' } }; 'add' { if ($DryRun) { Write-Output "DRY-RUN: add one state entry to $stateFile"; return }; Confirm-Mutation "Add state entry to ${stateFile}?"; New-Item -ItemType Directory -Force -Path (Split-Path -Parent $stateFile) | Out-Null; [IO.File]::AppendAllText($stateFile, ([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ') + ' ' + $StateText + [Environment]::NewLine), [Text.UTF8Encoding]::new($false)); Write-Output "CHANGED: added state entry to $stateFile"; Invoke-StateRotate }; 'rotate' { if (-not $DryRun) { Confirm-Mutation "Rotate bounded state in ${stateFile}?" }; Invoke-StateRotate } }
 }
 
 $argList = New-Object System.Collections.Generic.List[string]; if ($Arguments) { $argList.AddRange([string[]]$Arguments) }

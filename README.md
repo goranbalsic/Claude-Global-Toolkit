@@ -218,7 +218,7 @@ manages a delimited block and leaves everything outside it untouched:
 # My project's own instructions
 Deploy only from main. Never touch the migrations directory without review.
 
-<!-- ctk:begin v=3.0.0 profile=standard hash=a1b2c3d4e5f6 -->
+<!-- ctk:begin v=3.0.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
 @/home/you/Claude-Global-Toolkit/core/CLAUDE.core.md
 <!-- ctk:end -->
 ```

@@ -16,6 +16,11 @@ This toolkit is built the other way around. The part that loads every session is
 capped at **1,200 tokens and measured in CI**. It currently sits at **394**.
 Everything else costs nothing until you invoke it.
 
+Bootstrap once and the rest is global `/ctk:*` slash commands, no terminal
+required: safe project synchronization, compact continuity checkpoints, and
+safety guardrails are built in, with an optional Flutter and Android
+workflow module.
+
 ---
 
 ## Contents

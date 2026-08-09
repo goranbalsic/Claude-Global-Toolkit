@@ -5,11 +5,15 @@ session history.
 
 | Path | Purpose |
 |---|---|
-| `commands/ctk/` | Slash commands: `/ctk:resume`, `/ctk:checkpoint`, `/ctk:decide`, `/ctk:plan`, `/ctk:verify`, `/ctk:review`, `/ctk:ship`, `/ctk:goal`, `/ctk:refine`. |
+| `commands/ctk/` | Project-local slash commands with no global counterpart: `/ctk:decide`, `/ctk:plan`, `/ctk:verify`, `/ctk:review`, `/ctk:ship`. |
 | `agents/` | Isolated investigators, reviewers, and verifier agents that return compact evidence digests. |
 | `skills/` | Progressive-disclosure guidance for bounded continuity, evidence, safe changes, and task-scoped context routing. |
 | `settings.json` | Session orientation, edit safety, and file-local formatter hooks. |
 | `../hooks/` | POSIX hook implementations referenced by `settings.json`. |
+
+`/ctk:resume`, `/ctk:checkpoint`, `/ctk:goal`, and `/ctk:refine` are global
+commands instead (`~/.claude/commands/ctk/`, installed by `ctk bootstrap`,
+not staged into this directory) — see `docs/zero-manual-sync.md`.
 
 Invoke a command in Claude Code, for example:
 

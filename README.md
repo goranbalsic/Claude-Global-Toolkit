@@ -61,8 +61,12 @@ target.
 | `/ctk:refine` | Proposes one evidence-based improvement to a project-local skill, checklist, or routing rule, with a diff and rollback path, and applies it only after explicit approval. |
 
 Plus **eight global commands** — `/ctk:install`, `/ctk:update`, `/ctk:doctor`,
-`/ctk:status`, and the five above — available in *any* project once you
-bootstrap once per machine. See [Quick start](#quick-start).
+`/ctk:status`, `/ctk:resume`, `/ctk:checkpoint`, `/ctk:goal`, and
+`/ctk:refine` — available in *any* project once you bootstrap once per
+machine. See [Quick start](#quick-start). The last four exist only as global
+commands: no project-local copy is staged, so they need a bootstrapped
+machine. The other five commands above (`decide`, `plan`, `verify`, `review`,
+`ship`) are staged into every CTK-managed project regardless of bootstrap.
 
 **4 subagents** that exist for token economics. Each runs in its own context
 window and returns a compact digest, so expensive work does not stay in your
@@ -129,6 +133,13 @@ reversible with `ctk disable`.
 /ctk:resume      # reconstruct the resume point and get to work
 ```
 
+`/ctk:resume`, `/ctk:checkpoint`, `/ctk:goal`, and `/ctk:refine` also take one
+optional instruction typed in the same message, right after autocomplete:
+
+```
+/ctk:resume Review the authentication flow and fix duplicate files first.
+```
+
 Prefer the terminal, or want to script it? The same operations are a normal
 CLI:
 
@@ -162,7 +173,7 @@ ctk install --profile standard --no-modules
 # My project's own instructions
 Deploy only from main. Never touch the migrations directory without review.
 
-<!-- ctk:begin v=3.3.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
+<!-- ctk:begin v=3.4.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
 @/home/you/Claude-Global-Toolkit/core/CLAUDE.core.md
 <!-- ctk:end -->
 ```

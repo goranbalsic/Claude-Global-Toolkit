@@ -9,6 +9,47 @@ Versioning policy for this toolkit specifically:
 - **minor**: new commands, agents, skills, modules, or CLI capability
 - **major**: a change to the core operating rules or to the installer contract
 
+## [3.4.0] - 2026-08-09
+
+One real bug: `/ctk:resume`, `/ctk:checkpoint`, `/ctk:goal`, and `/ctk:refine`
+each had two command definitions in a bootstrapped, CTK-managed project — a
+project-local one (`.claude/commands/ctk/<name>.md`, staged by `ctk
+install`/`update`) and a global one (`~/.claude/commands/ctk/<name>.md`,
+staged by `ctk bootstrap`) — so Claude Code's slash-command picker showed two
+entries per name with different descriptions, and Tab-completion into either
+one was ambiguous. No change to the core operating rules or the managed-block
+installer contract.
+
+### Fixed
+
+- **Four `/ctk:*` commands were staged in two scopes at once.** The global
+  versions (added in 3.2.0) already resolve the CTK root from
+  `registration.txt` and work with zero project-local dependency; the
+  project-local versions predate them (3.0.0/3.1.0) and, for `checkpoint`,
+  `goal`, and `refine`, only ever worked when `$CLAUDE_PROJECT_DIR/bin/ctk`
+  existed — true for this checkout's own dogfood install, not for a real
+  downstream project. `resume.md`, `checkpoint.md`, `goal.md`, and
+  `refine.md` are removed from the project-local `.claude/commands/ctk/`
+  template; the global command is now the sole source for each. The five
+  commands with no global counterpart (`decide`, `plan`, `verify`, `review`,
+  `ship`) are unaffected and still stage into every CTK-managed project.
+- **Existing installs converge automatically, never silently.** `ctk
+  update` and the automatic session-sync path now remove any of the four
+  legacy project-local files that still match what CTK last staged there,
+  and report the removal. A copy a user has locally edited is left in place
+  untouched and dropped from the manifest instead — CTK stops asserting an
+  opinion about a file it no longer intends to manage, but never discards a
+  local change. Verified for both `bin/ctk` and `bin/ctk.ps1` against a
+  simulated pre-3.4.0 layout, including through the real, non-interactive
+  session-sync router.
+- **The tradeoff, stated plainly**: those four commands now require
+  `ctk bootstrap` to have run once on the current machine — a project handed
+  to someone who has never bootstrapped will not have them until they do.
+  `docs/zero-manual-sync.md` documents this and the exact supported
+  inline-instruction interaction (`/ctk:resume <text>`, typed in the same
+  message right after normal autocomplete, once — Claude Code's own
+  `$ARGUMENTS` substitution, not new CTK scripting).
+
 ## [3.3.0] - 2026-08-09
 
 Polish and hardening pass. One real bug (stale global slash commands), and the

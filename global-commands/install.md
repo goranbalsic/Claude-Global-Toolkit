@@ -15,8 +15,9 @@ Install CTK into the current project: `$ARGUMENTS`.
 2. If either line above is an error (not bootstrapped, registered checkout
    missing, etc.), report it verbatim and stop. Do not try to locate
    `bin/ctk` yourself or guess a path.
-3. Determine the profile: if `$ARGUMENTS` names `minimal`, `standard`, or
-   `full`, use that. Otherwise use the profile the detection line reported.
+3. Determine the profile: if the argument above names `minimal`, `standard`,
+   or `full`, use that. Otherwise use the profile the detection line
+   reported.
 4. State in one or two sentences what will happen: the chosen profile, the
    target directory (the current project), and that this adds a managed
    block to `CLAUDE.md` and stages CTK-managed files under `.claude/` and

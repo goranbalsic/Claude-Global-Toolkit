@@ -121,7 +121,7 @@ offering a stack-specific command in the wrong repository.
 Into the target's `CLAUDE.md`, appended, never overwriting:
 
 ```markdown
-<!-- ctk:begin v=3.3.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
+<!-- ctk:begin v=3.4.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
 @/home/you/Claude-Global-Toolkit/core/CLAUDE.core.md
 <!-- ctk:end -->
 ```
@@ -162,8 +162,10 @@ ctk doctor      # drift, orphaned markers, budget, missing or modified assets
 ctk budget      # measured always-loaded cost
 ```
 
-Then, in Claude Code, `/ctk:resume` to orient and `/ctk:verify` to confirm the
-project's own checks still pass.
+Then, in Claude Code, `/ctk:verify` to confirm the project's own checks still
+pass. `/ctk:resume` also works, but only after `ctk bootstrap` has run once on
+this machine — it is a global command with no project-local copy (see
+[docs/zero-manual-sync.md](zero-manual-sync.md)).
 
 ## Updating
 

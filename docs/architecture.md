@@ -55,7 +55,7 @@ recited on arrival.
 `ctk` never overwrites a target file. It manages a delimited block:
 
 ```
-<!-- ctk:begin v=3.3.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
+<!-- ctk:begin v=3.4.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
 ...managed content...
 <!-- ctk:end -->
 ```

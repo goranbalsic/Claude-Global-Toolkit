@@ -81,6 +81,22 @@ Claude Code, never from a terminal:
 | `/ctk:goal` | Sets, shows, or transitions the single bounded active goal through `ctk goal`. |
 | `/ctk:refine` | Proposes one reviewable improvement to a project-local skill or routing rule; edits only after approval. |
 
+`/ctk:resume`, `/ctk:checkpoint`, `/ctk:goal`, and `/ctk:refine` also accept
+one optional inline instruction, typed in the same message right after you
+select the command with the client's normal autocomplete (Tab, Enter, or
+equivalent) — Claude Code's own `$ARGUMENTS` substitution captures that text
+once and hands it to the command as its current focus, with no separate
+follow-up message needed:
+
+```text
+/ctk:resume Continue this project, but inspect and remove duplicate generated files first.
+```
+
+This is standard Claude Code custom-command behavior, not CTK-specific
+scripting — CTK only supplies the `argument-hint` and the single `$ARGUMENTS`
+placeholder each template already used. Whether the client's Tab-completion
+itself behaves a particular way is outside this repository's control.
+
 Each one is a **thin router**: at run time it reads the CTK root recorded in
 `registration.txt`, then calls the real `ctk` CLI at that absolute path
 (`bin/ctk.ps1` through a process-only `powershell -ExecutionPolicy Bypass` on
@@ -94,11 +110,26 @@ zero project-local CTK files; the other four assume a CTK-managed project (or,
 for `/ctk:resume`, just a git repository) but never require any file under
 `$CLAUDE_PROJECT_DIR/bin/`.
 
-A project that already has CTK installed also has its own project-local
-`.claude/commands/ctk/*.md` copies, staged there for portability — so the
-toolkit still works if you hand the project to someone without a bootstrapped
-machine. Behavior is equivalent whichever copy Claude Code resolves for a
-given session, since both ultimately call the same `ctk` CLI.
+`/ctk:resume`, `/ctk:checkpoint`, `/ctk:goal`, and `/ctk:refine` are global
+only: through 3.3.0 a project's own staged `.claude/commands/ctk/*.md` also
+included copies of these same four names, on the theory that Claude Code
+would silently resolve whichever one applied. It does not — a project with
+both a bootstrapped machine and a local install showed **two** entries for
+e.g. `/ctk:resume` in the picker, one per scope, each with a slightly
+different description. 3.4.0 removes the four project-local copies; the
+global command is the sole source for each, already resolves the CTK root
+from `registration.txt` with no project-local file required, and `ctk
+update`/session sync clean up any pre-3.4.0 project that still has the old
+duplicates (deleting an unmodified copy, leaving a locally edited one in
+place and untracked). The one real tradeoff: these four command names now
+need a bootstrapped machine to exist at all — handing a CTK-managed project
+to someone on a machine that has never run `ctk bootstrap` means those four
+are simply absent until they do, in exchange for `/ctk:resume` never again
+meaning two different things in the same picker. `/ctk:install`, `/ctk:update`,
+`/ctk:doctor`, and `/ctk:status` were never project-local to begin with — a
+brand-new project genuinely has no other way to install CTK. The remaining
+project-local commands (`review`, `ship`, `verify`, `plan`, `decide`) have no
+global counterpart and are unaffected.
 
 ## Ordinary use after bootstrap
 
@@ -110,7 +141,7 @@ given session, since both ultimately call the same `ctk` CLI.
    silently, except for one line such as:
 
    ```text
-   CTK: updated to 3.3.0 (standard profile); project state healthy.
+   CTK: updated to 3.4.0 (standard profile); project state healthy.
    ```
 
    If nothing changed, the line is `CTK: current (...)` and nothing is written.
@@ -123,7 +154,7 @@ replaces any CTK-owned global file that has drifted (backing up what it
 replaces) and adds one clause to its status line:
 
 ```text
-CTK: current (3.3.0, full profile). Refreshed 1 global command file(s); restart Claude Code once to load them.
+CTK: current (3.4.0, full profile). Refreshed 1 global command file(s); restart Claude Code once to load them.
 ```
 
 It only refreshes files that already exist, and only when the checkout being

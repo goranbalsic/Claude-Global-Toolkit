@@ -3,7 +3,7 @@ description: "Update the CTK-managed files in the current project, after approva
 allowed-tools: Bash
 ---
 
-Update CTK in the current project: `$ARGUMENTS`.
+Update CTK in the current project.
 
 !`sh "${CTK_HOME:-$HOME}/.claude/ctk/global-router.sh" status --target "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>&1 || true`
 

@@ -49,7 +49,7 @@ new_target() {
 test_fresh_install() {
     target=$(new_target fresh)
     "$CTK" install --target "$target" --yes >/dev/null
-    assert_file_contains "$target/CLAUDE.md" '<!-- ctk:begin v=3.3.0 profile=standard hash=' &&
+    assert_file_contains "$target/CLAUDE.md" '<!-- ctk:begin v=3.4.0 profile=standard hash=' &&
         assert_file_contains "$target/CLAUDE.md" '<!-- ctk:end -->'
 }
 
@@ -169,7 +169,7 @@ test_profiles_stage_different_file_sets() {
     "$CTK" install --profile standard --target "$standard" --yes >/dev/null
     "$CTK" install --profile full --target "$full" --yes >/dev/null
     [ ! -e "$minimal/.claude" ] &&
-        [ -f "$standard/.claude/commands/ctk/resume.md" ] &&
+        [ -f "$standard/.claude/commands/ctk/decide.md" ] &&
         [ -f "$standard/hooks/session-start.sh" ] &&
         [ -f "$standard/.claude/settings.json" ] &&
         [ ! -e "$standard/.claude/agents/investigator.md" ] &&
@@ -204,7 +204,7 @@ test_uninstall_removes_unmodified_staged_assets() {
     cp "$FIXTURES/user-claude.md" "$target/CLAUDE.md"
     "$CTK" install --profile standard --target "$target" --yes >/dev/null
     "$CTK" uninstall --target "$target" --yes >/dev/null
-    [ ! -e "$target/.claude/commands/ctk/resume.md" ] &&
+    [ ! -e "$target/.claude/commands/ctk/decide.md" ] &&
         [ ! -e "$target/hooks/session-start.sh" ] &&
         [ ! -e "$target/.claude/ctk/installed.txt" ] &&
         cmp -s "$FIXTURES/user-claude.md" "$target/CLAUDE.md"
@@ -213,11 +213,11 @@ test_uninstall_removes_unmodified_staged_assets() {
 test_uninstall_keeps_modified_staged_asset() {
     target=$(new_target staged-keep)
     "$CTK" install --profile standard --target "$target" --yes >/dev/null
-    printf '%s\n' 'local command edit' >> "$target/.claude/commands/ctk/resume.md"
+    printf '%s\n' 'local command edit' >> "$target/.claude/commands/ctk/decide.md"
     "$CTK" uninstall --target "$target" --yes > "$target/output"
-    [ -f "$target/.claude/commands/ctk/resume.md" ] &&
-        grep -F 'KEPT: locally modified staged file: .claude/commands/ctk/resume.md' "$target/output" >/dev/null &&
-        grep -F '.claude/commands/ctk/resume.md' "$target/.claude/ctk/installed.txt" >/dev/null
+    [ -f "$target/.claude/commands/ctk/decide.md" ] &&
+        grep -F 'KEPT: locally modified staged file: .claude/commands/ctk/decide.md' "$target/output" >/dev/null &&
+        grep -F '.claude/commands/ctk/decide.md' "$target/.claude/ctk/installed.txt" >/dev/null
 }
 
 test_installed_manifest_is_accurate() {
@@ -225,12 +225,12 @@ test_installed_manifest_is_accurate() {
     "$CTK" install --profile standard --target "$target" --yes >/dev/null
     manifest=$target/.claude/ctk/installed.txt
     [ "$(awk -F '\t' '$1 == "profile" { print $2 }' "$manifest")" = standard ] &&
-        [ "$(awk -F '\t' '$1 == "version" { print $2 }' "$manifest")" = 3.3.0 ] &&
+        [ "$(awk -F '\t' '$1 == "version" { print $2 }' "$manifest")" = 3.4.0 ] &&
         [ "$(awk -F '\t' '$1 == "schema" { print $2 }' "$manifest")" = 1 ] &&
-        grep -F '.claude/commands/ctk/resume.md' "$manifest" >/dev/null &&
+        grep -F '.claude/commands/ctk/decide.md' "$manifest" >/dev/null &&
         grep -F 'hooks/session-start.sh' "$manifest" >/dev/null &&
-        [ "$(awk -F '\t' 'NF == 2 && $1 != "version" && $1 != "profile" && $1 != "schema" && $1 !~ /^#/ { count++ } END { print count + 0 }' "$manifest")" -eq 14 ] &&
-        "$CTK" status --target "$target" | grep -F 'Staged files: 14' >/dev/null
+        [ "$(awk -F '\t' 'NF == 2 && $1 != "version" && $1 != "profile" && $1 != "schema" && $1 !~ /^#/ { count++ } END { print count + 0 }' "$manifest")" -eq 10 ] &&
+        "$CTK" status --target "$target" | grep -F 'Staged files: 10' >/dev/null
 }
 
 test_dry_run_profile_stages_nothing() {
@@ -249,11 +249,11 @@ test_doctor_flags_missing_and_modified_staged_assets() {
     modified=$(new_target doctor-modified-asset)
     missing=$(new_target doctor-missing-asset)
     "$CTK" install --profile standard --target "$modified" --yes >/dev/null
-    printf '%s\n' 'local modification' >> "$modified/.claude/commands/ctk/resume.md"
+    printf '%s\n' 'local modification' >> "$modified/.claude/commands/ctk/decide.md"
     if "$CTK" doctor --target "$modified" > "$modified/output" 2>&1; then
         return 1
     fi
-    grep -F 'FAIL: staged asset was locally modified: .claude/commands/ctk/resume.md' "$modified/output" >/dev/null || return 1
+    grep -F 'FAIL: staged asset was locally modified: .claude/commands/ctk/decide.md' "$modified/output" >/dev/null || return 1
     "$CTK" install --profile standard --target "$missing" --yes >/dev/null
     rm "$missing/hooks/session-start.sh"
     if "$CTK" doctor --target "$missing" > "$missing/output" 2>&1; then
@@ -270,7 +270,7 @@ test_dry_run_reports_backup_and_skip_without_writing() {
     "$CTK" install --profile standard --target "$target" --dry-run --yes > "$target/output"
     after=$(cksum "$target/.claude/settings.json")
     grep -F 'DRY-RUN: BACKUP: .claude/settings.json' "$target/output" >/dev/null &&
-        grep -F 'DRY-RUN: SKIP: identical staged file: .claude/commands/ctk/resume.md' "$target/output" >/dev/null &&
+        grep -F 'DRY-RUN: SKIP: identical staged file: .claude/commands/ctk/decide.md' "$target/output" >/dev/null &&
         [ "$before" = "$after" ]
 }
 
@@ -383,6 +383,25 @@ test_disable_noop_preserves_untouched_settings() {
 
 GLOBAL_COMMAND_NAMES='install update doctor status resume checkpoint goal refine'
 
+# The four names that used to exist as BOTH a project-local staged command
+# (.claude/commands/ctk/<name>.md, pre-3.4.0) and a global one
+# (~/.claude/commands/ctk/<name>.md) -- the exact overlap that made Claude
+# Code discover two definitions of e.g. /ctk:resume with different
+# descriptions. 3.4.0 makes the global copy the sole source for these four.
+LEGACY_DUPLICATE_COMMAND_NAMES='resume checkpoint goal refine'
+
+# Mirrors bin/ctk's own hash_file fallback chain so a fabricated manifest
+# entry hashes exactly the way ctk itself would compute it.
+test_hash_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" | awk '{print $1}'
+    else
+        openssl dgst -sha256 "$1" | sed 's/^.*= //'
+    fi
+}
+
 test_bootstrap_creates_global_commands() {
     home=$(new_ctk_home boot-global-fresh)
     CTK_HOME="$home" "$CTK" bootstrap --yes >"$home/output"
@@ -442,6 +461,182 @@ test_global_command_files_have_correct_routing() {
     done
 }
 
+# Pins the exact mechanism the inline-argument UX depends on: Claude Code
+# substitutes $ARGUMENTS with everything the user typed after the command
+# name, once. A command must carry the placeholder exactly one time (never
+# zero if it advertises argument-hint, never duplicated) or the rendered
+# prompt would show the user's inline instruction twice or not at all.
+test_argument_placeholder_used_exactly_once_where_supported() {
+    for cmd_name in $GLOBAL_COMMAND_NAMES; do
+        tpl="$ROOT_DIR/global-commands/$cmd_name.md"
+        # shellcheck disable=SC2016 # matching the literal placeholder text; no expansion wanted
+        count=$(grep -c -F '$ARGUMENTS' "$tpl")
+        case $cmd_name in
+            doctor|status|update)
+                # None of these three act on user-typed text (update only
+                # confirms and re-stages what's already installed), so none
+                # should advertise or use the placeholder.
+                [ "$count" -eq 0 ] || return 1
+                ! grep -q '^argument-hint:' "$tpl" || return 1
+                ;;
+            *)
+                [ "$count" -eq 1 ] || return 1
+                grep -q '^argument-hint:' "$tpl" || return 1
+                ;;
+        esac
+    done
+}
+
+# Bootstrap installs global commands by copying the source templates
+# verbatim (stage_home_file), so the installed file a user's Tab-completed
+# invocation actually renders must be byte-identical to the checked-in
+# source -- no re-templating step exists that could duplicate content.
+test_installed_global_commands_match_source_exactly() {
+    home=$(new_ctk_home boot-global-bytes)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    for cmd_name in $GLOBAL_COMMAND_NAMES; do
+        cmp -s "$ROOT_DIR/global-commands/$cmd_name.md" "$home/.claude/commands/ctk/$cmd_name.md" || return 1
+    done
+}
+
+# An inline instruction is prompt data, never shell code: `state add` writes
+# the argument's exact bytes via printf into STATE.md and the router forwards
+# it as a single argv element (never through eval or a rebuilt shell string),
+# so quotes/$/backticks/semicolons/ampersands must land once, verbatim, with
+# no side effect from any embedded command substitution.
+test_state_add_handles_shell_metacharacters_without_injection() {
+    home=$(new_ctk_home boot-global-metachar)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    project=$(new_target metachar-project)
+    # shellcheck disable=SC2016 # deliberately literal: proving this text is never shell-evaluated
+    nasty='quote-"-dollar-$(touch INJECTED_SUBSHELL)-backtick-`touch INJECTED_BACKTICK`-semi-;touch INJECTED_SEMI;-amp-&touch INJECTED_AMP&-done'
+    CTK_HOME="$home" sh "$home/.claude/ctk/global-router.sh" state add "$nasty" --target "$project" --yes >/dev/null
+    [ ! -e "$project/INJECTED_SUBSHELL" ] &&
+        [ ! -e "$project/INJECTED_BACKTICK" ] &&
+        [ ! -e "$project/INJECTED_SEMI" ] &&
+        [ ! -e "$project/INJECTED_AMP" ] &&
+        [ "$(grep -c -F "$nasty" "$project/.claude/ctk/STATE.md")" -eq 1 ]
+}
+
+# Same guarantee for `goal set --objective`, the other free-text field a
+# global command (goal.md) forwards from $ARGUMENTS-derived user text.
+test_goal_set_handles_shell_metacharacters_without_injection() {
+    home=$(new_ctk_home boot-global-goal-metachar)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    project=$(new_target goal-metachar-project)
+    # shellcheck disable=SC2016 # deliberately literal: proving this text is never shell-evaluated
+    nasty_obj='objective-"-dollar-$(touch INJECTED_GOAL_SUBSHELL)-backtick-`touch INJECTED_GOAL_BACKTICK`-semi-;touch INJECTED_GOAL_SEMI;-amp-&touch INJECTED_GOAL_AMP&-done'
+    CTK_HOME="$home" sh "$home/.claude/ctk/global-router.sh" goal set --objective "$nasty_obj" --acceptance 'tests pass once' --target "$project" --yes >/dev/null
+    [ ! -e "$project/INJECTED_GOAL_SUBSHELL" ] &&
+        [ ! -e "$project/INJECTED_GOAL_BACKTICK" ] &&
+        [ ! -e "$project/INJECTED_GOAL_SEMI" ] &&
+        [ ! -e "$project/INJECTED_GOAL_AMP" ] &&
+        [ "$(grep -c -F "$nasty_obj" "$project/.claude/ctk/GOAL.md")" -eq 1 ]
+}
+
+# A bootstrapped machine plus a freshly installed project used to yield two
+# discovered definitions per overlapping command name (project + user scope,
+# different descriptions). Proves a fresh install never recreates that.
+test_fresh_install_never_creates_global_command_duplicates() {
+    home=$(new_ctk_home boot-nodupe-fresh)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    project=$(new_target nodupe-project)
+    CTK_HOME="$home" sh "$home/.claude/ctk/global-router.sh" install --profile full --target "$project" --yes >/dev/null
+    for cmd_name in $LEGACY_DUPLICATE_COMMAND_NAMES; do
+        [ ! -e "$project/.claude/commands/ctk/$cmd_name.md" ] || return 1
+        [ -f "$home/.claude/commands/ctk/$cmd_name.md" ] || return 1
+    done
+    [ -f "$project/.claude/commands/ctk/decide.md" ]
+}
+
+# The general form of the same guarantee: enumerate every command file
+# actually discoverable at project scope and at user scope for a bootstrapped,
+# fully installed project, and prove no command name is defined in both --
+# i.e. the picker has exactly one entry per /ctk:* name, not an ambiguous two.
+test_command_inventory_has_no_cross_scope_duplicates() {
+    home=$(new_ctk_home boot-inventory)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    project=$(new_target inventory-project)
+    CTK_HOME="$home" sh "$home/.claude/ctk/global-router.sh" install --profile full --target "$project" --yes >/dev/null
+    project_count=0
+    for f in "$project"/.claude/commands/ctk/*.md; do
+        [ -f "$f" ] || continue
+        project_count=$((project_count + 1))
+        inventory_cmd=$(basename "$f" .md)
+        [ ! -f "$home/.claude/commands/ctk/$inventory_cmd.md" ] || return 1
+    done
+    global_count=0
+    for f in "$home"/.claude/commands/ctk/*.md; do
+        [ -f "$f" ] || continue
+        global_count=$((global_count + 1))
+    done
+    [ "$project_count" -gt 0 ] && [ "$global_count" -eq 8 ]
+}
+
+# Reproduces exactly the layout a pre-3.4.0 install left behind (project-local
+# copies of all four overlapping commands, unmodified since staging) and
+# proves `ctk update` converges it to the new canonical layout: every
+# duplicate removed, reported, and dropped from the manifest.
+test_legacy_duplicate_layout_converges_on_update() {
+    target=$(new_target legacy-dupe-update)
+    "$CTK" install --target "$target" --yes >/dev/null
+    for cmd_name in $LEGACY_DUPLICATE_COMMAND_NAMES; do
+        printf 'legacy pre-3.4.0 project-local /ctk:%s command body\n' "$cmd_name" > "$target/.claude/commands/ctk/$cmd_name.md"
+        legacy_hash=$(test_hash_file "$target/.claude/commands/ctk/$cmd_name.md")
+        printf '.claude/commands/ctk/%s.md\t%s\n' "$cmd_name" "$legacy_hash" >> "$target/.claude/ctk/installed.txt"
+    done
+    "$CTK" update --target "$target" --yes > "$target/output"
+    for cmd_name in $LEGACY_DUPLICATE_COMMAND_NAMES; do
+        [ ! -e "$target/.claude/commands/ctk/$cmd_name.md" ] || return 1
+        grep -F "CHANGED: removed .claude/commands/ctk/$cmd_name.md (superseded by the global /ctk:$cmd_name command" "$target/output" >/dev/null || return 1
+        grep -F ".claude/commands/ctk/$cmd_name.md" "$target/.claude/ctk/installed.txt" >/dev/null && return 1
+    done
+    return 0
+}
+
+# Same legacy layout, but every one of the four files was locally modified.
+# Migration must never discard a user's edit: the file stays exactly as they
+# left it, reported as KEPT, and dropped from the manifest since CTK no
+# longer manages it (so 'doctor' stops flagging it as drift forever).
+test_legacy_duplicate_layout_keeps_locally_modified_copies() {
+    target=$(new_target legacy-dupe-modified)
+    "$CTK" install --target "$target" --yes >/dev/null
+    for cmd_name in $LEGACY_DUPLICATE_COMMAND_NAMES; do
+        printf 'legacy pre-3.4.0 project-local /ctk:%s command body\n' "$cmd_name" > "$target/.claude/commands/ctk/$cmd_name.md"
+        legacy_hash=$(test_hash_file "$target/.claude/commands/ctk/$cmd_name.md")
+        printf '.claude/commands/ctk/%s.md\t%s\n' "$cmd_name" "$legacy_hash" >> "$target/.claude/ctk/installed.txt"
+        printf 'a user customization for %s\n' "$cmd_name" >> "$target/.claude/commands/ctk/$cmd_name.md"
+    done
+    "$CTK" update --target "$target" --yes > "$target/output"
+    for cmd_name in $LEGACY_DUPLICATE_COMMAND_NAMES; do
+        [ -f "$target/.claude/commands/ctk/$cmd_name.md" ] || return 1
+        grep -F "a user customization for $cmd_name" "$target/.claude/commands/ctk/$cmd_name.md" >/dev/null || return 1
+        grep -F "KEPT: locally modified, left in place and no longer CTK-managed: .claude/commands/ctk/$cmd_name.md" "$target/output" >/dev/null || return 1
+        grep -F ".claude/commands/ctk/$cmd_name.md" "$target/.claude/ctk/installed.txt" >/dev/null && return 1
+    done
+    return 0
+}
+
+# The real-world path: a pre-3.4.0 project on a bootstrapped machine gets no
+# terminal command at all, only the automatic SessionStart sync. Rolls the
+# manifest's recorded version back to simulate that pre-existing state (a
+# manifest already at the current VERSION would short-circuit sync as
+# "nothing changed" before migration ever ran -- the exact way this bug
+# reached a real machine originally) and proves sync converges it unattended.
+test_session_sync_converges_legacy_duplicate_layout() {
+    home=$(new_ctk_home sync-migrate-home)
+    CTK_HOME="$home" "$CTK" bootstrap --yes >/dev/null
+    target=$(new_target sync-migrate-project)
+    CTK_HOME="$home" "$CTK" install --target "$target" --yes >/dev/null
+    printf 'legacy pre-3.4.0 project-local /ctk:resume command body\n' > "$target/.claude/commands/ctk/resume.md"
+    legacy_hash=$(test_hash_file "$target/.claude/commands/ctk/resume.md")
+    printf '.claude/commands/ctk/resume.md\t%s\n' "$legacy_hash" >> "$target/.claude/ctk/installed.txt"
+    awk -F '\t' 'BEGIN { OFS = "\t" } $1 == "version" { $2 = "3.3.0" } { print }' "$target/.claude/ctk/installed.txt" > "$target/.claude/ctk/installed.txt.new"
+    mv "$target/.claude/ctk/installed.txt.new" "$target/.claude/ctk/installed.txt"
+    CTK_HOME="$home" CLAUDE_PROJECT_DIR="$target" sh "$ROOT_DIR/router/session-sync-router.sh" >/dev/null
+    [ ! -e "$target/.claude/commands/ctk/resume.md" ]
+}
+
 test_global_commands_do_not_load_full_core_by_default() {
     for cmd_name in $GLOBAL_COMMAND_NAMES; do
         tpl="$ROOT_DIR/global-commands/$cmd_name.md"
@@ -467,7 +662,11 @@ test_global_install_works_before_project_ctk_files_exist() {
         [ ! -e "$project/bin/ctk" ] || return 1
     CTK_HOME="$home" sh "$home/.claude/ctk/global-router.sh" install --profile standard --target "$project" --yes >/dev/null
     assert_file_contains "$project/CLAUDE.md" '<!-- ctk:begin v=' &&
-        [ -f "$project/.claude/commands/ctk/resume.md" ]
+        [ -f "$project/.claude/commands/ctk/decide.md" ] &&
+        # resume.md must NOT be staged project-locally: the global /ctk:resume
+        # command (already installed under $home) is the sole source for it,
+        # so a project install must never re-create the duplicate.
+        [ ! -e "$project/.claude/commands/ctk/resume.md" ]
 }
 
 test_global_update_doctor_resume_on_existing_apk_project() {
@@ -585,14 +784,14 @@ test_session_sync_missing_manifest_fails_closed() {
 test_session_sync_conflict_preserves_local_edit() {
     target=$(new_target sync-conflict)
     "$CTK" install --profile full --target "$target" --yes >/dev/null
-    printf '%s\n' 'local edit' >> "$target/.claude/commands/ctk/resume.md"
+    printf '%s\n' 'local edit' >> "$target/.claude/commands/ctk/decide.md"
     before_claude=$(cksum "$target/CLAUDE.md")
     code=0
     "$CTK" update --session-sync --target "$target" --yes > "$target/output" 2>&1 || code=$?
     after_claude=$(cksum "$target/CLAUDE.md")
     [ "$code" -eq 11 ] &&
-        grep -F 'locally modified managed file detected (.claude/commands/ctk/resume.md)' "$target/output" >/dev/null &&
-        grep -F 'local edit' "$target/.claude/commands/ctk/resume.md" >/dev/null &&
+        grep -F 'locally modified managed file detected (.claude/commands/ctk/decide.md)' "$target/output" >/dev/null &&
+        grep -F 'local edit' "$target/.claude/commands/ctk/decide.md" >/dev/null &&
         [ "$before_claude" = "$after_claude" ]
 }
 
@@ -697,6 +896,15 @@ run_test test_bootstrap_creates_global_commands
 run_test test_bootstrap_global_commands_idempotent
 run_test test_disable_removes_only_ctk_owned_global_commands
 run_test test_global_command_files_have_correct_routing
+run_test test_argument_placeholder_used_exactly_once_where_supported
+run_test test_installed_global_commands_match_source_exactly
+run_test test_state_add_handles_shell_metacharacters_without_injection
+run_test test_goal_set_handles_shell_metacharacters_without_injection
+run_test test_fresh_install_never_creates_global_command_duplicates
+run_test test_command_inventory_has_no_cross_scope_duplicates
+run_test test_legacy_duplicate_layout_converges_on_update
+run_test test_legacy_duplicate_layout_keeps_locally_modified_copies
+run_test test_session_sync_converges_legacy_duplicate_layout
 run_test test_global_commands_do_not_load_full_core_by_default
 run_test test_global_install_works_before_project_ctk_files_exist
 run_test test_global_update_doctor_resume_on_existing_apk_project

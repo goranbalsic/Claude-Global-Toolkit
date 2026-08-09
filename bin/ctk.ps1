@@ -11,7 +11,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Version = '3.3.0'
+$Version = '3.4.0'
 $CoreLimit = 1200
 $StateLimit = 400
 $GoalLimit = 300
@@ -295,7 +295,49 @@ function Stage-ProfileAssets {
         if (Test-Path -LiteralPath (Join-Path $moduleDir 'skills') -PathType Container) { Stage-Directory (Join-Path $moduleDir 'skills') ".claude/skills/$module" }
     }
 }
-function Stage-SelectedProfile { if (-not $DryRun) { Prepare-StageRecords }; Stage-ProfileAssets; if (-not $DryRun) { Write-InstalledManifest } }
+# 3.4.0 migration: these four project-local command files duplicated the
+# global /ctk:* entry points added in 3.2.0 (same namespace, same command
+# name, slightly different body), so Claude Code discovered two definitions
+# for e.g. /ctk:resume -- one project-scoped, one user-scoped -- and listed
+# both with different descriptions. The global versions are canonical now
+# and already work with no project-local file at all (they resolve the CTK
+# root from registration.txt), so update/session-sync remove the old
+# project-local copies here. A copy that still matches what CTK last staged
+# is deleted outright; a copy the user has modified is left in place and
+# untracked instead, exactly like any other superseded asset -- never
+# silently discarded. Reads the on-disk installed manifest directly (not
+# $StageRecords) so this also reports correctly under --dry-run, when
+# Prepare-StageRecords never runs.
+$LegacyDuplicateCommandPaths = @('.claude/commands/ctk/resume.md', '.claude/commands/ctk/checkpoint.md', '.claude/commands/ctk/goal.md', '.claude/commands/ctk/refine.md')
+function Invoke-MigrateLegacyDuplicateCommands {
+    $installed = Get-InstalledFile
+    if (-not (Test-Path -LiteralPath $installed -PathType Leaf)) { return }
+    $recorded = @{}
+    foreach ($line in Get-Content -LiteralPath $installed) {
+        $parts = $line -split "`t", 2
+        if ($parts.Count -eq 2 -and $parts[0] -notin @('version', 'profile', 'schema') -and -not $parts[0].StartsWith('#')) { $recorded[$parts[0]] = $parts[1] }
+    }
+    foreach ($path in $LegacyDuplicateCommandPaths) {
+        $target = Join-Path $TargetDir $path
+        if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { continue }
+        if (-not $recorded.ContainsKey($path)) { continue }
+        $recordedHash = $recorded[$path]
+        $name = [IO.Path]::GetFileNameWithoutExtension($path)
+        if ((Get-FileSha256 $target) -eq $recordedHash) {
+            if ($DryRun) { Write-Output "DRY-RUN: REMOVE: $path (superseded by the global /ctk:$name command)" }
+            else {
+                Remove-Item -LiteralPath $target -Force
+                Remove-EmptyParents $target
+                $StageRecords.Remove($path) | Out-Null
+                Write-Output "CHANGED: removed $path (superseded by the global /ctk:$name command; run 'ctk bootstrap' once per machine if it is not registered yet)"
+            }
+        } else {
+            if (-not $DryRun) { $StageRecords.Remove($path) | Out-Null }
+            Write-Output "KEPT: locally modified, left in place and no longer CTK-managed: $path"
+        }
+    }
+}
+function Stage-SelectedProfile { if (-not $DryRun) { Prepare-StageRecords }; Invoke-MigrateLegacyDuplicateCommands; Stage-ProfileAssets; if (-not $DryRun) { Write-InstalledManifest } }
 function Invoke-Install {
     Ensure-WriteTarget; Choose-ExistingSettings; $state = Get-BlockState
     if ($state -eq 'orphan') { Fail "orphaned ctk markers in $(Get-TargetFile); repair them before install" }

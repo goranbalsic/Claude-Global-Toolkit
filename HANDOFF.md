@@ -1,11 +1,11 @@
-# Checkpoint and handoff: 3.3.0
+# Checkpoint and handoff: 3.4.0
 
 Date: 2026-08-09
 Repo: https://github.com/goranbalsic/Claude-Global-Toolkit
-Branch: `main`. Latest release line: `3.3.0`.
+Branch: `main`. Latest release line: `3.4.0`.
 Revert points: `v3.0.0` tag (first lean release), `v2.2.0` tag (entire v2 tree).
 
-This file replaces the 3.0.0-era handoff. Read `CHANGELOG.md` for the full
+This file replaces the 3.3.0-era handoff. Read `CHANGELOG.md` for the full
 per-release record; this is the current state and what to do next.
 
 ## What the toolkit is now
@@ -26,7 +26,7 @@ Injection is a managed block appended to a project's `CLAUDE.md`; the user's own
 content is preserved byte for byte:
 
 ```
-<!-- ctk:begin v=3.3.0 profile=standard hash=<sha256-12> -->
+<!-- ctk:begin v=3.4.0 profile=standard hash=<sha256-12> -->
 @/path/to/Claude-Global-Toolkit/core/CLAUDE.core.md
 <!-- ctk:end -->
 ```
@@ -41,6 +41,7 @@ only the block, `restore` reverses a modification from `.ctk-backup/`.
 | 3.1.0 | CTKv4 lean workflow: manifest schema, `/ctk:goal`, `/ctk:refine`, bounded context loader |
 | 3.2.0 | Zero-manual project sync: `ctk bootstrap` / `ctk disable`, `ctk update --session-sync`, global `SessionStart` router (`sh` + `ps1`), then 8 global `/ctk:*` slash commands installed into `~/.claude/commands/ctk/` |
 | 3.3.0 | Polish pass: session sync also refreshes stale global command files; `.gitattributes` LF pin; `router/` added to lint; real Windows CI coverage |
+| 3.4.0 | Fixed real bug: `resume`/`checkpoint`/`goal`/`refine` existed as both a project-local and a global command, so Claude Code's picker showed two entries per name. The four are global-only now; `update`/session-sync converge any pre-3.4.0 project automatically. |
 
 The intended user experience, end to end:
 
@@ -48,30 +49,51 @@ The intended user experience, end to end:
    `powershell -NoProfile -ExecutionPolicy Bypass -File "<CTK>\bin\ctk.ps1" bootstrap`).
 2. **Forever after:** open Claude Code in any project and use `/ctk:install`,
    `/ctk:update`, `/ctk:doctor`, `/ctk:status`, `/ctk:resume`,
-   `/ctk:checkpoint`, `/ctk:goal`, `/ctk:refine`.
+   `/ctk:checkpoint`, `/ctk:goal`, `/ctk:refine`. The last four need bootstrap
+   to have run at least once; they are no longer staged into the project.
 
 No `PATH` setup, no permanent execution-policy change, no editing
 `settings.json`, no terminal lifecycle commands. `docs/zero-manual-sync.md` is
 the user-facing explanation.
 
-## Verification actually run for 3.3.0
+## Verification actually run for 3.4.0
 
-- `sh tests/run.sh`: **53 passed, 0 failed** on Linux.
-- `shellcheck -s sh` over `bin hooks modules router tests`: **clean**.
-- `./bin/ctk budget`: **PASS**, 394/1200 core, 0/400 state.
-- Frontmatter/YAML validation over `.claude/commands`, `.claude/agents`,
-  `.claude/skills`, `modules`, `global-commands`: clean.
-- New regression tests prove the global-refresh path repairs drift, stays
-  silent when nothing drifted, never creates a file `bootstrap` did not
-  install, and refuses to act from an unregistered checkout.
+- `sh tests/run.sh`: **58 passed, 4 failed** on this machine (Windows, Git
+  Bash) — the 4 failures are the pre-existing CRLF-fixture issue tracked
+  since 3.1.0 (`test_user_content_preserved`, `test_update_only_block_body`,
+  `test_uninstall_restores_original`, `test_uninstall_removes_unmodified_staged_assets`),
+  unrelated to this release; CI's Linux job is unaffected by it.
+- 9 new regression tests added for the duplicate-command fix specifically:
+  the argument-placeholder/no-duplication contract for every global command
+  template, byte-identity between the installed and source global command
+  files, shell-metacharacter safety for `state add`/`goal set`, that a fresh
+  install never recreates the four now-global-only project-local files, that
+  the discovered project-scope and user-scope command inventories never
+  share a name, and that a simulated pre-3.4.0 duplicate layout converges
+  correctly on `ctk update` (both the unmodified-file-removed and the
+  locally-modified-file-kept cases) and through the real, non-interactive
+  session-sync router.
+- `shellcheck -s sh` over `bin hooks modules router tests`: clean.
+- **`bin/ctk.ps1` was actually executed this time**, on a real Windows
+  machine with PowerShell available — not just parsed. The fresh-install,
+  update-with-unmodified-duplicate, update-with-modified-duplicate, and
+  `--dry-run` migration scenarios were run directly against `bin/ctk.ps1`
+  and matched `bin/ctk`'s behavior exactly. This closes 3.3.0's Gap 1 for
+  this specific change; it is not a claim that every `ctk.ps1` code path has
+  now been exercised outside CI.
 
 ## Known gaps, stated honestly
 
-1. **`bin/ctk.ps1` is not executed in this build environment.** PowerShell is
-   unavailable here, so the 3.3.0 PowerShell changes were written to mirror the
-   verified `sh` behavior and are covered by CI's parse check plus an advisory
-   `windows-latest` lifecycle smoke test — not by a local run. The Windows job
-   is the source of truth for them.
+1. **`bin/ctk.ps1` is usually not executed outside CI, but was for 3.4.0.**
+   This session ran on a real Windows machine with PowerShell available and
+   exercised the new migration logic directly against `bin/ctk.ps1` (fresh
+   install, unmodified-duplicate update, modified-duplicate update, dry-run),
+   matching `bin/ctk`'s behavior in every case. That is real verification of
+   this specific change, not of the whole `ctk.ps1` surface — most of the
+   file (bootstrap, modules, goal/state lifecycle, session-sync edge cases)
+   is still covered only by CI's parse check plus the advisory
+   `windows-latest` lifecycle smoke test. Treat any *other* PowerShell change
+   the way 3.3.0 did: CI's Windows job is still the source of truth for it.
 2. **The advisory Windows steps are new.** `continue-on-error: true` is set on
    the lifecycle smoke test so a first-run false red cannot block an otherwise
    green build. **Next task: check the first Windows run, then promote that
@@ -94,21 +116,33 @@ the user-facing explanation.
 8. **Link mode breaks if the toolkit checkout moves.** `ctk doctor` reports it;
    `--embed` avoids it.
 9. **Version naming.** The work informally called "CTKv4" shipped as 3.1.0 →
-   3.3.0 because none of it broke the core rules or the installer contract.
+   3.4.0 because none of it broke the core rules or the installer contract.
    A `4.0.0` tag would be cosmetic; do it only alongside a real contract change.
+10. **The four now-global-only commands need a bootstrapped machine.**
+    Before 3.4.0, a CTK-managed project handed to someone who had never
+    bootstrapped still had working (if duplicated) `resume`/`checkpoint`/
+    `goal`/`refine` commands, staged locally. Now those four are simply
+    absent until that person runs `ctk bootstrap` once. This is the accepted
+    tradeoff for fixing the duplicate-picker-entry bug; `docs/zero-manual-sync.md`
+    states it plainly.
 
 ## Next actions, in order
 
-1. **Check the first `windows-latest` CI run on 3.3.0.** Fix anything the
+1. **Check the first `windows-latest` CI run on 3.4.0.** Fix anything the
    parse check, Git Bash test run, or lifecycle smoke test reports, then drop
-   `continue-on-error` from the smoke test. Gap 2.
-2. **Confirm the refresh path on the real Windows machine**: `git pull` in the
-   CTK checkout, restart Claude Code in a managed project, and check the status
-   line mentions refreshed global command files without any `bootstrap` re-run.
+   `continue-on-error` from the smoke test. Gap 2 (still open — this session's
+   manual PowerShell run covers only the 3.4.0 migration logic, not the whole
+   smoke-test surface).
+2. **In a real Claude Code session on a bootstrapped machine**, confirm what
+   this session could only prove at the CLI level: opening a project that
+   still has the old duplicate `resume.md`/etc. shows one `/ctk:resume` in
+   the picker (not two) after the next session-start sync, and typing
+   `/ctk:resume <text>` after autocomplete runs as one message with no
+   duplicated instruction.
 3. **Verify the Flutter module against the real SDK**: `/flutter-android:doctor`,
    `:analyze`, `:test`, `:preflight`, `:apk --release --split-per-abi`. Gap 6.
 4. Optional: a README asciinema of `ctk install --dry-run` and `ctk budget`.
-5. Optional: cut a GitHub Release from the `CHANGELOG.md` 3.3.0 section.
+5. Optional: cut a GitHub Release from the `CHANGELOG.md` 3.4.0 section.
 
 ## Reverting
 

@@ -1359,8 +1359,13 @@ bootstrap_cmd() {
     # write recorded here. Any other case is conservatively "not owned," so
     # disable always falls back to the jq-or-fail-safe merge path instead of
     # ever guessing at content it did not write.
-    prev_owned=$( [ -f "$reg_file" ] && awk -F '\t' '$1 == "settings_owned" { print $2; exit }' "$reg_file" || true)
-    prev_hash=$( [ -f "$reg_file" ] && awk -F '\t' '$1 == "settings_hash" { print $2; exit }' "$reg_file" || true)
+    if [ -f "$reg_file" ]; then
+        prev_owned=$(awk -F '\t' '$1 == "settings_owned" { print $2; exit }' "$reg_file")
+        prev_hash=$(awk -F '\t' '$1 == "settings_hash" { print $2; exit }' "$reg_file")
+    else
+        prev_owned=
+        prev_hash=
+    fi
     was_empty=1
     [ -f "$settings_file" ] && [ -s "$settings_file" ] && was_empty=0
     was_owned_unchanged=0

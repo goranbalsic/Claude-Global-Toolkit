@@ -1,102 +1,48 @@
 # Claude Global Toolkit
 
-**A token-budgeted engineering toolkit for Claude Code: slash commands, subagents, skills, and safety hooks that install into any repository without overwriting your `CLAUDE.md`, and uninstall with one command.**
+**A lightweight, token-budgeted Claude Code toolkit: global `/ctk:*` slash
+commands, safe project synchronization, practical guardrails, compact project
+continuity, and an optional Flutter/Android workflow.**
 
 [![CI](https://github.com/goranbalsic/Claude-Global-Toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/goranbalsic/Claude-Global-Toolkit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Always-loaded cost](https://img.shields.io/badge/always--loaded-394%20tokens-brightgreen)
+![Always-loaded cost](https://img.shields.io/badge/always--loaded-397%20tokens-brightgreen)
 ![Dependencies](https://img.shields.io/badge/runtime%20dependencies-none-brightgreen)
 ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue)
 
-Most AI coding setups get slower and more expensive the longer you use them. They
-accumulate rules, checklists, and decision logs, then load all of it at the start
-of every session. The context window fills with preamble before any work begins.
+CTK bootstraps once per machine, then lives entirely inside Claude Code as
+`/ctk:*` slash commands — no terminal required for day-to-day use. It installs
+into a project as a delimited, non-destructive block: your `CLAUDE.md` is
+never overwritten, and everything CTK stages is tracked so it can be updated
+or removed cleanly. The part it loads on every session is capped at **1,200
+tokens and measured in CI**; it currently measures **397**. Everything else —
+commands, subagents, skills, the Flutter/Android module — costs nothing until
+you invoke it.
 
-This toolkit is built the other way around. The part that loads every session is
-capped at **1,200 tokens and measured in CI**. It currently sits at **394**.
-Everything else costs nothing until you invoke it.
-
-Bootstrap once and the rest is global `/ctk:*` slash commands, no terminal
-required: safe project synchronization, compact continuity checkpoints, and
-safety guardrails are built in, with an optional Flutter and Android
-workflow module.
+It's for developers using Claude Code who want reviewable, reversible
+tooling instead of an instructions file that only grows, and for Flutter/Android
+developers who want analyze, test, build, and release checks as commands
+rather than remembered incantations. It is not an opinionated framework that
+restructures your repository, and it does not read or send your code
+anywhere: no network calls, no telemetry, no writes outside the directory you
+target.
 
 ---
 
 ## Contents
 
-- [Why this exists](#why-this-exists)
-- [Who it is for](#who-it-is-for)
 - [What you get](#what-you-get)
-- [Install](#install)
-- [Per-project injection without token cost](#per-project-injection-without-token-cost)
-- [Zero-manual sync](#zero-manual-sync)
-- [Usage](#usage)
-- [Uninstall and revert](#uninstall-and-revert)
-- [Scope](#scope)
+- [Quick start](#quick-start)
 - [How it works](#how-it-works)
-- [Repository layout](#repository-layout)
-- [Requirements](#requirements)
+- [Core workflows](#core-workflows)
+- [Safety and token discipline](#safety-and-token-discipline)
+- [Flutter and Android](#flutter-and-android)
+- [Scope and known limits](#scope-and-known-limits)
 - [Documentation](#documentation)
-- [Contributing](#contributing)
+- [Trust and contribution](#trust-and-contribution)
 - [License](#license)
 
 ---
-
-## Why this exists
-
-Version 2 of this toolkit was a handbook: 87 files, roughly 338 KB of Markdown,
-describing how an AI agent should behave. The reasoning was sound. Measured in a
-real project, the result was not.
-
-The session-start read order it installed pulled in four files before any work
-could begin:
-
-| File | Size | Approx. tokens |
-|---|---:|---:|
-| `DECISIONS.md` | 104 KB | ~26,000 |
-| `PROJECT_CONTEXT.md` | 28 KB | ~7,000 |
-| `PROMPTS.md` | 25 KB | ~6,400 |
-| `OPEN_QUESTIONS.md` | 17 KB | ~4,300 |
-| **Total, every session** | **174 KB** | **~45,000** |
-
-Those files only grew. Nothing capped them, and nothing measured them. Meanwhile
-the toolkit implemented none of Claude Code's actual extension points. It gave the
-agent advice where it could have given the agent tools.
-
-Version 3 fixes both problems:
-
-| | v2.2.0 | v3.0.0 |
-|---|---|---|
-| Always-loaded cost | ~45,000 tokens, unbounded | **394 tokens, capped and CI-enforced** |
-| Executable capability | none | 7 slash commands, 4 subagents, 3 skills, 3 hooks |
-| Install behaviour | overwrites the target `CLAUDE.md` | appends a delimited block, preserves your content byte for byte |
-| Uninstall | none, by policy | `ctk uninstall` |
-| Session history | read in full, every session | capped working set, archive queried on demand |
-| Stack support | none | opt-in Flutter/Android release module |
-| Tests | manual | 10+ automated, CI on Linux, macOS, Windows |
-
-Nothing from v2 was lost. It is preserved in full as the `v2.2.0` tag.
-
-## Who it is for
-
-- **Developers using Claude Code daily** who have noticed sessions getting slower
-  and more expensive as their instruction files grow.
-- **Anyone whose `CLAUDE.md` has become a dumping ground** and who wants a
-  baseline that can be updated without hand-merging local rules back in.
-- **Teams** that need agent behaviour to be reviewable. The managed block shows up
-  as a clean, self-describing diff in pull requests.
-- **Flutter and Android developers** shipping APKs and app bundles who want
-  analyze, test, build, signing, and pre-release checks as commands rather than
-  remembered incantations.
-- **People who distrust AI tooling that cannot prove its own claims.** Every
-  safety property here has a test, the token budget is measured rather than
-  asserted, and there is no telemetry, no network access, and no install step that
-  touches anything outside the directory you name.
-
-It is probably not for you if you want an opinionated framework that restructures
-your repository, or if you are looking for a prompt collection to read rather than
-software to run.
 
 ## What you get
 
@@ -114,46 +60,34 @@ software to run.
 | `/ctk:goal` | Creates, inspects, pauses, completes, cancels, or clears one bounded active goal in `.claude/ctk/GOAL.md`. Never auto-loaded and never continues work on its own; `complete` requires stated evidence. |
 | `/ctk:refine` | Proposes one evidence-based improvement to a project-local skill, checklist, or routing rule, with a diff and rollback path, and applies it only after explicit approval. |
 
-**4 subagents** that exist for token economics. Each runs in its own context window
-and returns a compact digest, so expensive work does not stay in your main thread:
+Plus **eight global commands** — `/ctk:install`, `/ctk:update`, `/ctk:doctor`,
+`/ctk:status`, and the five above — available in *any* project once you
+bootstrap once per machine. See [Quick start](#quick-start).
 
-`investigator` (repository reconnaissance), `code-reviewer`, `verifier`,
-`security-reviewer`.
+**4 subagents** that exist for token economics. Each runs in its own context
+window and returns a compact digest, so expensive work does not stay in your
+main thread: `investigator` (repository reconnaissance), `code-reviewer`,
+`verifier`, `security-reviewer`.
 
-**4 skills** loaded progressively when relevant: session continuity,
-evidence and uncertainty labelling, safe reversible changes, and task-scoped
-context routing (naming the smallest existing command, skill, agent, or
-module asset for a stated task category instead of reading broadly).
+**4 skills** loaded progressively when relevant: session continuity, evidence
+and uncertainty labelling, safe reversible changes, and task-scoped context
+routing (naming the smallest existing command, skill, agent, or module asset
+for a stated task category instead of reading broadly).
 
 **3 hooks** that provide real automation, not advice:
 
-- `SessionStart` prints a cheap deterministic orientation digest, so the model
-  starts oriented without reading anything large.
-- `PostToolUse` formats only the file just edited, dispatching on extension, and
-  no-ops silently when the formatter is absent.
+- `SessionStart` prints a cheap deterministic orientation digest, so the
+  model starts oriented without reading anything large.
+- `PostToolUse` formats only the file just edited, dispatching on extension,
+  and no-ops silently when the formatter is absent.
 - `PreToolUse` **blocks** writes to `*.keystore`, `*.jks`, `*.p12`, `*.pem`,
-  `key.properties`, `.env*`, `google-services.json`, and service-account JSON.
-  Verified by test: a keystore payload exits 2 and is refused, a Dart payload
-  passes.
+  `key.properties`, `.env*`, `google-services.json`, and service-account
+  JSON. Verified by test: a keystore payload exits 2 and is refused, a Dart
+  payload passes.
 
-**One opt-in global router**, registered once by `ctk bootstrap`, not staged
-into any project: on every session start it defers to `ctk update
---session-sync` to synchronize an already-managed project, or names one
-approval-needed status for a first-time one. See [Zero-manual
-sync](#zero-manual-sync).
+**An opt-in Flutter/Android module** — see [Flutter and Android](#flutter-and-android).
 
-**An opt-in Flutter/Android module** with 8 commands and real scripts: `analyze`,
-`test` (configurable concurrency, defaulting to `-j 1`, with the reason
-documented), `apk` (debug and release, `--split-per-abi`, flavors, size
-reporting), `bundle`, `version` (safe semver and build-number bumping in
-`pubspec.yaml`), `preflight`, `release`, `doctor`. The preflight gate fails if any
-keystore, `key.properties`, or `.env` file is tracked by git, and no script ever
-prints a secret. It also adds two on-demand skills for the planning side of
-Flutter work the commands above don't cover: `flutter-recon` (project
-reconnaissance and scoped change planning) and `flutter-ui-checklist` (a
-UI/feature implementation checklist).
-
-## Install
+## Quick start
 
 No package manager, no build step, no dependencies.
 
@@ -163,26 +97,43 @@ cd Claude-Global-Toolkit
 chmod +x bin/ctk
 ```
 
-Optionally put it on your `PATH`:
+Verify the checkout before trusting it:
 
 ```sh
-ln -s "$PWD/bin/ctk" ~/.local/bin/ctk
+sh tests/run.sh     # 53+ tests, expect all pass
+bin/ctk budget      # expect PASS with the measured always-loaded cost
 ```
 
 On Windows use `bin\ctk.ps1`, which has an identical command surface.
 
-Verify the checkout before trusting it:
+**One time, per machine**, so CTK never needs a terminal again:
 
 ```sh
-sh tests/run.sh     # 10+ tests, expect all pass
-bin/ctk budget      # expect PASS with the measured always-loaded cost
+ctk bootstrap --yes        # POSIX
 ```
 
-### Adopt it in a project
+```powershell
+& .\bin\ctk.ps1 bootstrap --yes   # Windows
+```
+
+This registers the checkout, adds one `SessionStart` hook to your
+user-level Claude Code settings (not the project's), and installs the eight
+global `/ctk:*` commands into `~/.claude/commands/ctk/`. Both steps are
+reversible with `ctk disable`.
+
+**Then, in any project, inside Claude Code:**
+
+```
+/ctk:install     # new project — asks for approval before writing anything
+/ctk:status      # what is installed here
+/ctk:resume      # reconstruct the resume point and get to work
+```
+
+Prefer the terminal, or want to script it? The same operations are a normal
+CLI:
 
 ```sh
 cd /path/to/your/project
-
 ctk install --dry-run          # see exactly what would change, write nothing
 ctk install                    # standard profile, link mode
 ```
@@ -201,37 +152,11 @@ ctk install --profile full --module flutter-android
 ctk install --profile standard --no-modules
 ```
 
-## Per-project injection without token cost
+## How it works
 
-Global installation is **optional and not the default**. There are two injection
-modes, and the cheap one is what you get unless you ask otherwise.
-
-**Link mode (default).** The managed block is a single `@`-import pointing at the
-toolkit on disk. Claude Code resolves the import natively, so your project's
-instruction file carries roughly fifteen tokens. One core is shared by every
-project, and editing the toolkit updates all of them at once with no reinstall.
-
-```sh
-ctk install --link             # default
-```
-
-**Embed mode.** The core is inlined, so the project is self-contained and works on
-a machine that does not have the toolkit checked out. The cost is duplication and
-a per-project `ctk update`.
-
-```sh
-ctk install --embed
-```
-
-**Global mode, if you want it.** This is the only operation that writes outside the
-target directory, and it is explicit in the command name.
-
-```sh
-ctk install --global           # writes ~/.claude/CLAUDE.md
-```
-
-Whatever mode you choose, your existing file is never overwritten. The toolkit
-manages a delimited block and leaves everything outside it untouched:
+**Ownership.** Every file CTK stages is tracked in
+`.claude/ctk/installed.txt`, and the only file it edits in place is your
+`CLAUDE.md`, where it manages one delimited block:
 
 ```markdown
 # My project's own instructions
@@ -242,62 +167,35 @@ Deploy only from main. Never touch the migrations directory without review.
 <!-- ctk:end -->
 ```
 
-`install` appends the block. `update` replaces the block body only. `uninstall`
-deletes the block only. Your rules above it survive byte for byte, which is
-verified by test.
+`install` appends the block. `update` replaces the block body only.
+`uninstall` deletes the block only. Everything outside the markers — your own
+rules — survives byte for byte, which is verified by test. A staged file you
+edit locally is detected by hash and reported as kept, never silently
+overwritten.
 
-## Zero-manual sync
+**Global command resolution.** The eight commands `ctk bootstrap` installs
+into `~/.claude/commands/ctk/` are thin routers: each one reads the CTK root
+recorded at bootstrap time and calls the real `ctk` CLI at that absolute
+path. That is what lets `/ctk:install` work in a brand-new project with zero
+project-local CTK files, before any project-local install exists, and
+without ever touching `PATH`.
 
-Everything above is a command you type. Bootstrap once per machine and you
-never have to type `ctk install`, `ctk update`, or `ctk doctor` in a terminal
-again — you drive CTK entirely from inside Claude Code instead.
+**Three layers**, and only the first and third are ever always loaded:
 
-**One time:**
+| Layer | Contents | Loaded | Budget |
+|---|---|---|---|
+| L1 Core | `core/CLAUDE.core.md`, the operating rules | every session | **1,200 tokens, enforced** |
+| L2 On-demand | commands, subagents, skills, modules | on invocation only | not needed |
+| L3 State | `.claude/ctk/STATE.md`, session continuity | every session | **400 tokens, enforced** |
 
-```sh
-ctk bootstrap --yes        # POSIX
-```
+`ctk budget` measures L1 plus L3 and exits nonzero on a breach; CI runs it on
+every push. History (`STATE.md`) is a capped working set — entries that age
+out rotate into `.claude/ctk/archive/`, which is never read automatically —
+so nothing is lost, but nothing is recited by default either.
 
-```powershell
-& .\bin\ctk.ps1 bootstrap --yes   # Windows
-```
+Full detail in [docs/architecture.md](docs/architecture.md).
 
-**Then forever:**
-
-- Open Claude Code in any project.
-- Use `/ctk:install` for a new project.
-- Use `/ctk:update` for an existing project.
-- Use `/ctk:doctor` if something is wrong.
-- Use `/ctk:resume` to continue work.
-
-No `ctk install`, `ctk update`, or `ctk doctor` typed in a terminal, no
-`PATH` edits, no hunting for `bin/ctk`.
-
-Bootstrap does two things, both reversible and both restart-once to take
-effect:
-
-1. Registers the checkout and adds one `SessionStart` hook to your
-   user-level Claude Code settings — not the project's — so that restarting
-   Claude Code inside any already-managed project synchronizes safe
-   CTK-managed changes automatically, and a brand-new project gets one
-   approval prompt instead of a terminal command hunt.
-2. Installs eight global slash commands — `/ctk:install`, `/ctk:update`,
-   `/ctk:doctor`, `/ctk:status`, `/ctk:resume`, `/ctk:checkpoint`,
-   `/ctk:goal`, `/ctk:refine` — into `~/.claude/commands/ctk/` (POSIX) or
-   `%USERPROFILE%\.claude\commands\ctk\` (Windows). These are thin routers:
-   each one resolves the registered CTK root at runtime and calls the real
-   `ctk` CLI at its absolute path, so they work in any project, in any
-   session, before any project-local CTK files exist and without ever
-   touching `PATH`.
-
-Local edits to managed files always block the automatic path rather than
-being overwritten, and nothing outside CTK-managed files is ever touched.
-`ctk disable` removes only the registration, the router hook, and these eight
-global command files — never anything else in `~/.claude/commands/`. Full
-detail, safety guarantees, and recovery steps in
-[docs/zero-manual-sync.md](docs/zero-manual-sync.md).
-
-## Usage
+## Core workflows
 
 ```sh
 ctk status      # what is installed here: profile, version, staged file count
@@ -309,110 +207,152 @@ ctk state add "Finished currency parser. Next: wire the rate cache."
 ctk goal show   # the single bounded active goal, never auto-loaded
 ctk goal set --objective "ship v3.1" --acceptance "tests pass"
 ctk goal complete --evidence "sh tests/run.sh: 0 failed"
+ctk uninstall --dry-run   # show precisely what would be removed
+ctk uninstall
+ctk restore     # undo the newest change to a CTK-managed file, from backup
 ```
 
-Then work normally in Claude Code and reach for the commands:
+From inside Claude Code, once bootstrapped, the equivalents work in any
+project without a terminal:
 
 ```
+/ctk:install
+/ctk:update
+/ctk:doctor
+/ctk:status
 /ctk:resume
-/ctk:plan add offline exchange-rate caching
-/ctk:verify
-/ctk:review
 /ctk:checkpoint
 /ctk:goal set objective: offline exchange-rate caching; acceptance: tests pass
-/ctk:ship
+/ctk:refine
 ```
 
-Every mutating command accepts `--dry-run` and `--yes`, takes a timestamped backup
-into `.ctk-backup/` first, and is reversible.
+Every mutating command accepts `--dry-run` and `--yes`, takes a timestamped
+backup into `.ctk-backup/` first, and is reversible.
 
-## Uninstall and revert
-
-Reversal is a first-class feature, at three levels.
-
-**Remove the toolkit from one project.** Deletes only the managed block and only
-the files it staged. A staged file you edited locally is reported and kept, never
-silently deleted.
+**Removing CTK entirely from a project:**
 
 ```sh
-ctk uninstall --dry-run        # show precisely what would be removed
+ctk uninstall --dry-run
 ctk uninstall
 ```
 
-**Restore the previous state of a modified file** from the automatic backup:
+Deletes only the managed block and only the files it staged. A staged file
+you edited locally is reported and kept, never silently deleted. See
+[docs/uninstall.md](docs/uninstall.md) for every reversal path, including how
+to disable machine-level bootstrap (`ctk disable`) independently of any
+project.
 
-```sh
-ctk restore
-```
+## Safety and token discipline
 
-**Go back to v2.2.0 entirely.** The previous version is preserved as a tag, so it
-is always one command away:
+- **Non-destructive by construction.** `ctk` never overwrites a target file;
+  it manages a delimited block and refuses to act on any CTK-managed file it
+  finds locally modified, whether run by hand or through the automatic
+  session-start sync.
+- **Backed up before every write.** Every mutating command takes a
+  timestamped backup into `.ctk-backup/` first; `ctk restore` reverses the
+  newest one.
+- **A measured budget, not an assertion.** `ctk budget` prints the actual
+  byte/token count for the always-loaded core and state, compares it to the
+  1,200/400-token caps, and CI fails the build on a breach — currently **397
+  / 1,200** for the core.
+- **Secret paths are actively blocked**, not just documented: a `PreToolUse`
+  hook refuses writes to keystores, `.env*`, `key.properties`, and
+  service-account JSON, verified by test.
+- **No network calls, no telemetry, no background process.** The toolkit
+  reads and writes files in the directory you target, and nowhere else,
+  except the explicit `--global` case.
 
-```sh
-git checkout v2.2.0
-```
+Zero-manual sync (the automatic session-start refresh described in [How it
+works](#how-it-works)) follows the same rules: it only ever calls the same
+`ctk install`/`ctk update` you could type yourself, stops before writing
+anything if a conflict is detected, and reports one clause instead of acting
+silently. Full detail in [docs/zero-manual-sync.md](docs/zero-manual-sync.md)
+and [docs/token-budget.md](docs/token-budget.md).
 
-Reading or recovering individual v2 files without changing your checkout:
+## Flutter and Android
 
-```sh
-git show v2.2.0:HOW_TO_USE.md
-git checkout v2.2.0 -- chapters/01-daily-operating-loop.md
-```
+An opt-in module — staged only with `--profile full` or an explicit
+`--module flutter-android`, and only detected automatically when the target
+has a `pubspec.yaml` containing `flutter:`. It contributes zero tokens to a
+project that doesn't use it.
 
-See [docs/migrating-from-v2.md](docs/migrating-from-v2.md) for upgrading a project
-that already adopted v2, including how to remove the expensive read order.
+8 commands with real scripts behind them: `analyze`, `test` (configurable
+concurrency, defaulting to `-j 1`, with the reason documented), `apk` (debug
+and release, `--split-per-abi`, flavors, size reporting), `bundle`, `version`
+(safe semver and build-number bumping in `pubspec.yaml`), `preflight`,
+`release`, `doctor`. The preflight gate fails if any keystore,
+`key.properties`, or `.env` file is tracked by git, and no script ever prints
+a secret.
 
-## Scope
+Two on-demand skills cover the planning side the commands above don't:
+`flutter-recon` (project reconnaissance and scoped change planning) and
+`flutter-ui-checklist` (a UI/feature implementation checklist).
 
-**In scope.** Universal engineering rules that hold in any repository. Session
-continuity that stays bounded. Non-destructive installation, update, drift
-detection, and removal. Slash commands, subagents, skills, and hooks that run real
-tooling. Opt-in per-stack modules. A measured, CI-enforced token budget.
+Argument handling, failure paths, and secret hygiene are covered by CI; the
+Flutter SDK itself is not available in CI, so build commands are exercised as
+dry runs there rather than against a real toolchain. See
+[modules/flutter-android/README.md](modules/flutter-android/README.md).
+
+## Scope and known limits
+
+**In scope.** Universal engineering rules that hold in any repository.
+Session continuity that stays bounded. Non-destructive installation, update,
+drift detection, and removal. Slash commands, subagents, skills, and hooks
+that run real tooling. Opt-in per-stack modules. A measured, CI-enforced
+token budget.
 
 **Out of scope, deliberately.** Restructuring your repository or imposing a
-directory layout. Any runtime dependency, package installation, network call, or
-telemetry. Writing outside the target directory, except the explicit `--global`
-case. Automating destructive or outbound actions without approval. Prompt
-collections meant to be read rather than run. Support for editors other than
-Claude Code, for now.
+directory layout. Any runtime dependency, package installation, network
+call, or telemetry. Writing outside the target directory, except the
+explicit `--global` case. Automating destructive or outbound actions without
+approval. Support for editors other than Claude Code, for now.
 
-**Known limits, stated plainly.** Token counts are estimated at four bytes per
-token, which is deliberately approximate: the budget exists to catch
-order-of-magnitude regressions, not to replace a tokenizer. Link mode requires the
-toolkit to stay at the path recorded at install time, and `ctk doctor` will tell
-you when it has moved. The Flutter module's scripts are verified for their argument
-handling, failure paths, and secret hygiene, but the Flutter SDK itself is not
-available in CI, so build commands are exercised as dry runs there.
+**Stated plainly:**
 
-## How it works
+- Token counts are estimated at four bytes per token — approximate by
+  design, enough to catch order-of-magnitude regressions rather than replace
+  a tokenizer.
+- Link mode (the default injection mode) requires the toolkit to stay at the
+  path recorded at install time; `ctk doctor` reports it if that path moves.
+  `ctk install --embed` avoids this at the cost of per-project duplication.
+- A newly bootstrapped or newly installed slash command needs one Claude
+  Code restart to appear — a Claude Code loading behavior, not something CTK
+  can avoid.
 
-Three layers, and only the first and third are ever always present:
+## Documentation
 
-| Layer | Contents | Loaded | Budget |
-|---|---|---|---|
-| L1 Core | `core/CLAUDE.core.md`, the operating rules | every session | **1,200 tokens, enforced** |
-| L2 On-demand | commands, subagents, skills, modules | on invocation only | not needed |
-| L3 State | `.claude/ctk/STATE.md`, session continuity | every session | **400 tokens, enforced** |
+| Document | Contents |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | Layer model, managed-block injection, design rationale |
+| [docs/token-budget.md](docs/token-budget.md) | What is measured, why, and how to keep the core small |
+| [docs/install.md](docs/install.md) | Full installation and profile reference |
+| [docs/zero-manual-sync.md](docs/zero-manual-sync.md) | One-time bootstrap, automatic project sync, safety and recovery |
+| [docs/uninstall.md](docs/uninstall.md) | Every reversal path |
+| [docs/writing-modules.md](docs/writing-modules.md) | The module contract |
+| [modules/flutter-android/README.md](modules/flutter-android/README.md) | Flutter and Android release workflows |
+| [CHANGELOG.md](CHANGELOG.md) | Full release history |
+| [docs/migrating-from-v2.md](docs/migrating-from-v2.md) | Upgrading a project still on the retired v2 handbook |
+| [SECURITY.md](SECURITY.md) | Threat model, secret handling, disclosure |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Constraints, checks, how to add commands and modules |
 
-`ctk budget` measures L1 plus L3 and exits nonzero on a breach. CI runs it on every
-push, so the toolkit cannot quietly regress into the v2 failure mode. The budget is
-a build constraint, not a guideline.
+## Trust and contribution
 
-The subagent design is the other half of the cost story. Repository reconnaissance
-can cost tens of thousands of tokens, and in a normal session all of it stays in
-context afterwards. Delegating it to `investigator` moves that cost into a
-throwaway context window and returns a structured summary. The work still happens;
-the main thread just does not carry the raw material for the rest of the session.
+**Requirements:** Claude Code; a POSIX shell (`sh`, `dash`, `bash`, `zsh`) on
+Linux, macOS, or WSL, or PowerShell 5.1+ on Windows; `git`. Nothing else at
+runtime. CI runs on Linux, macOS, and Windows.
 
-History is handled the same way. `STATE.md` is the capped working set. Entries that
-age out rotate into `.claude/ctk/archive/`, which is never read automatically.
-Nothing is lost. History becomes something you query when a question needs it,
-rather than something recited at the start of every session that does not.
+Issues and pull requests are welcome. The constraints in
+[CONTRIBUTING.md](CONTRIBUTING.md) are what keep the toolkit useful, and the
+token budget is the one that gets enforced automatically. Before opening a
+pull request:
 
-Full detail in [docs/architecture.md](docs/architecture.md) and
-[docs/token-budget.md](docs/token-budget.md).
+```sh
+sh tests/run.sh
+bin/ctk budget
+shellcheck -s sh bin/ctk tests/run.sh hooks/*.sh modules/*/scripts/*.sh router/*.sh
+```
 
-## Repository layout
+Repository layout, for orientation:
 
 ```
 core/CLAUDE.core.md          the always-loaded rules, budget-enforced
@@ -429,46 +369,6 @@ router/                      global SessionStart router + global command router,
 modules/flutter-android/     opt-in Flutter and Android release workflows
 tests/run.sh                 test harness with fixtures
 docs/                        architecture, install, uninstall, budget, modules
-```
-
-## Requirements
-
-- **Claude Code.** The commands, subagents, skills, and hooks target its
-  extension points.
-- **A POSIX shell** (`sh`, `dash`, `bash`, `zsh`) on Linux, macOS, or WSL, **or**
-  PowerShell 5.1 or later on Windows.
-- **`git`** for drift and secret checks, and for the revert path.
-- Nothing else at runtime. `shellcheck` and `PyYAML` are needed only to run the
-  full CI checks locally.
-- The Flutter module additionally needs the Flutter SDK, a JDK, and the Android
-  SDK, and reports them as unavailable rather than failing confusingly when they
-  are absent.
-
-## Documentation
-
-| Document | Contents |
-|---|---|
-| [docs/architecture.md](docs/architecture.md) | Layer model, managed-block injection, design rationale |
-| [docs/token-budget.md](docs/token-budget.md) | What is measured, why, and how to keep the core small |
-| [docs/install.md](docs/install.md) | Full installation and profile reference |
-| [docs/zero-manual-sync.md](docs/zero-manual-sync.md) | One-time bootstrap, automatic project sync, safety and recovery |
-| [docs/uninstall.md](docs/uninstall.md) | Every reversal path |
-| [docs/writing-modules.md](docs/writing-modules.md) | The module contract |
-| [docs/migrating-from-v2.md](docs/migrating-from-v2.md) | v2 to v3 mapping and upgrade steps |
-| [modules/flutter-android/README.md](modules/flutter-android/README.md) | Flutter and Android release workflows |
-| [SECURITY.md](SECURITY.md) | Threat model, secret handling, disclosure |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Constraints, checks, how to add commands and modules |
-
-## Contributing
-
-Issues and pull requests are welcome. The constraints in
-[CONTRIBUTING.md](CONTRIBUTING.md) are what keep the toolkit useful, and the token
-budget is the one that gets enforced automatically. Before opening a pull request:
-
-```sh
-sh tests/run.sh
-bin/ctk budget
-shellcheck -s sh bin/ctk tests/run.sh hooks/*.sh modules/*/scripts/*.sh router/*.sh
 ```
 
 ## License

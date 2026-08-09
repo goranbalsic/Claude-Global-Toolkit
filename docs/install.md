@@ -121,7 +121,7 @@ offering a stack-specific command in the wrong repository.
 Into the target's `CLAUDE.md`, appended, never overwriting:
 
 ```markdown
-<!-- ctk:begin v=3.0.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
+<!-- ctk:begin v=3.3.0 profile=standard hash=a1b2c3d4e5f6 sep=0 -->
 @/home/you/Claude-Global-Toolkit/core/CLAUDE.core.md
 <!-- ctk:end -->
 ```

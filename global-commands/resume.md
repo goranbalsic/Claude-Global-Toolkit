@@ -10,7 +10,7 @@ Cheap repository digest:
 
 !`printf 'branch: '; git branch --show-current 2>/dev/null || true`
 !`git status --short 2>/dev/null | sed -n '1,80p'`
-!`git log -n 5 --oneline --decorate 2>/dev/null`
+!`git log -n 5 --oneline --decorate 2>/dev/null || true`
 !`if [ -f .claude/ctk/STATE.md ]; then tail -n 80 .claude/ctk/STATE.md; else printf '%s\n' 'No bounded state file yet.'; fi`
 
 1. Treat the bounded `STATE.md` tail and Git evidence above as the starting

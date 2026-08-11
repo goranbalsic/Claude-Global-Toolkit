@@ -7,8 +7,8 @@ argument-hint: "[scope or acceptance criteria]"
 Adversarially review the current diff: `$ARGUMENTS`.
 
 !`git status --short 2>/dev/null | sed -n '1,80p'`
-!`git diff --stat 2>/dev/null`
-!`git diff --cached --stat 2>/dev/null`
+!`git diff --stat 2>/dev/null || true`
+!`git diff --cached --stat 2>/dev/null || true`
 
 1. Delegate the diff analysis to the `code-reviewer` subagent. Its isolated
    context is intentional: reconnaissance and adversarial reasoning should
